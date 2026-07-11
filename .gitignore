@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads (local storage)
+uploads/*
+!uploads/.gitkeep
+
+# Pytest
+.pytest_cache/
+htmlcov/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+khn3lVK4qT03gJobTWWCy-yG03ua9fa2GGi5mep7XMDAr9RHcjel4X-_aRGOfudKyDed0T-ksHbPj3eonbKT0A

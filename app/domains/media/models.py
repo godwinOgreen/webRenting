@@ -1,0 +1,514 @@
+# app/domains/media/models.py
+
+"""
+Domain: Media
+Tables: media_assets, property_images, virtual_tours
+Enums: MediaStatus, ModerationStatus
+
+Three models that handle all file uploads on the platform.
+
+MediaAsset    — a file on storage (image, video). Goes through processing pipeline.
+PropertyImage — a link between a property and a media asset (with display order).
+VirtualTour   — a URL to an external 360° tour service (e.g. Matterport).
+
+Why MediaAsset is separate from PropertyImage:
+  MediaAsset represents the FILE on storage. PropertyImage represents the
+  LINK between that file and a property. This separation allows:
+    1. Processing status tracked on MediaAsset independently of property lifecycle
+    2. Moderation status tracked on MediaAsset independently
+    3. Reusing the same media asset in different contexts (future: user avatars)
+    4. Deleting a property removes image LINKS, not the files themselves
+       (files are cleaned up by a separate storage garbage collector)
+
+Media processing pipeline (Celery task: media_processing.py):
+  1. User uploads file via POST /media/upload
+  2. integrations/storage saves file → returns URL
+  3. MediaAsset created: status=pending, moderation_status=pending
+  4. Celery media_processing task picks up pending assets:
+     a. Compress image (pillow)
+     b. Generate thumbnail
+     c. Generate blurhash (for placeholder while loading)
+     d. Update: status=ready, width, height, file_size_kb, blurhash
+     e. If processing fails: status=failed
+  5. Moderation (separate from processing):
+     a. moderation_status=pending until admin reviews
+     b. Admin approves → moderation_status=approved
+     c. Image appears on listing only when BOTH:
+        status=ready AND moderation_status=approved
+
+Virtual tours are URLs, not files:
+  They point to external services (Matterport, Kuula, etc.).
+  No processing pipeline. No media asset. Just a URL + display order.
+  The platform embeds the tour via iframe on the property detail page.
+
+Property image visibility (Rule 11):
+  A PropertyImage is only publicly visible when:
+    - its media_asset.status == "ready"
+    - its media_asset.moderation_status == "approved"
+  Enforced in property_service and search query, not as a DB constraint.
+"""
+from __future__ import annotations
+
+import enum
+import uuid
+from typing import TYPE_CHECKING, Optional
+
+import sqlalchemy as sa
+from sqlalchemy import (
+    Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, text,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+
+from app.db.base import Base
+from app.db.mixins import UUIDMixin, TimestampMixin, CreatedAtMixin
+
+if TYPE_CHECKING:
+    from app.domains.properties.models import Property
+    from app.domains.users.models import User
+
+
+# ─── Enums ───────────────────────────────────────────────────────────────────
+
+class MediaStatus(str, enum.Enum):
+    """
+    Processing pipeline status for a media asset.
+
+    PENDING    → uploaded, waiting for Celery to pick up
+    PROCESSING → Celery is compressing, generating thumbnail + blurhash
+    READY      → processing complete, asset can be displayed
+    FAILED     → processing failed (corrupt file, unsupported format, etc.)
+
+    Only READY assets are displayed on property listings.
+    FAILED assets are logged for debugging. User may re-upload.
+    """
+    PENDING = "pending"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class ModerationStatus(str, enum.Enum):
+    """
+    Content moderation status. Independent of processing status.
+
+    PENDING  → waiting for admin/moderator review
+    APPROVED → content is safe for display
+    REJECTED → content violates platform rules (hidden from listing)
+
+    An image can be processing-READY but moderation-PENDING.
+    Both must be satisfied: status=ready AND moderation_status=approved.
+    """
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+# ─── SQLAlchemy Enum column types ────────────────────────────────────────────
+
+_media_status_col = sa.Enum(
+    MediaStatus,
+    name="media_status",
+    values_callable=lambda obj: [e.value for e in obj],
+)
+
+_moderation_status_col = sa.Enum(
+    ModerationStatus,
+    name="moderation_status",
+    values_callable=lambda obj: [e.value for e in obj],
+)
+
+
+# ─── MediaAsset Model ────────────────────────────────────────────────────────
+
+class MediaAsset(Base, UUIDMixin, TimestampMixin):
+    """
+    A file stored in object storage (S3 or local).
+
+    Table: media_assets
+
+    Lifecycle:
+      upload → PENDING → PROCESSING → READY (or FAILED)
+      admin review → moderation: PENDING → APPROVED (or REJECTED)
+
+    Storage URLs:
+      original_url  — the uploaded file (full resolution)
+      optimized_url — compressed version (generated by Celery)
+      thumbnail_url — small preview (generated by Celery)
+      All three are NULL until processing completes (except original_url).
+
+    blurhash:
+      A short string that encodes a blurred preview of the image.
+      Frontend shows this as a placeholder while the real image loads.
+      Generated by Celery media_processing task.
+
+    Uses TimestampMixin:
+      created_at: when the file was uploaded
+      updated_at: when processing status or moderation status changed
+    """
+
+    __tablename__ = "media_assets"
+
+    # ── Who uploaded ──────────────────────────────────────────────────────────
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+        comment=(
+            "Who uploaded this file. "
+            "RESTRICT: cannot delete user who uploaded files (audit trail). "
+            "Indexed: admin queries filter by uploader."
+        ),
+    )
+
+    # ── Storage URLs ──────────────────────────────────────────────────────────
+    original_url: Mapped[str] = mapped_column(
+        Text, nullable=False,
+        comment="URL of the original uploaded file (full resolution). Set on upload.",
+    )
+    optimized_url: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True,
+        comment="URL of the compressed version. Set by Celery media_processing task after processing.",
+    )
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True,
+        comment="URL of the small preview thumbnail. Set by Celery after processing.",
+    )
+
+    # ── Metadata (populated by Celery after processing) ───────────────────────
+    blurhash: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True,
+        comment=(
+            "Blurhash string for placeholder display while image loads. "
+            "Generated by Celery from the original image. "
+            "Frontend: <img src={thumbnail_url} placeholder={blurhash} />"
+        ),
+    )
+    mime_type: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True,
+        comment="MIME type (e.g. 'image/jpeg', 'image/png', 'video/mp4'). Detected on upload.",
+    )
+    file_size_kb: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        comment="File size in kilobytes. Set by Celery after processing.",
+    )
+    width: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        comment="Image/video width in pixels. Set by Celery after processing.",
+    )
+    height: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        comment="Image/video height in pixels. Set by Celery after processing.",
+    )
+
+    # ── Processing status ─────────────────────────────────────────────────────
+    status: Mapped[MediaStatus] = mapped_column(
+        _media_status_col, nullable=False,
+        server_default=text("'pending'"),
+        default=MediaStatus.PENDING,
+        index=True,
+        comment=(
+            "Processing pipeline status. Celery transitions: "
+            "pending → processing → ready (or failed). "
+            "Indexed: Celery queries WHERE status='pending' to find work."
+        ),
+    )
+
+    # ── Moderation status ─────────────────────────────────────────────────────
+    moderation_status: Mapped[ModerationStatus] = mapped_column(
+        _moderation_status_col, nullable=False,
+        server_default=text("'pending'"),
+        default=ModerationStatus.PENDING,
+        index=True,
+        comment=(
+            "Content moderation status. Admin transitions: "
+            "pending → approved (or rejected). "
+            "Image is only visible when status=ready AND moderation_status=approved."
+        ),
+    )
+
+    # ── Constraints ───────────────────────────────────────────────────────────
+    __table_args__ = (
+        CheckConstraint(
+            "file_size_kb IS NULL OR file_size_kb > 0",
+            name="chk_file_size",
+        ),
+        CheckConstraint(
+            "(width IS NULL AND height IS NULL) OR (width > 0 AND height > 0)",
+            name="chk_dimensions",
+        ),
+    )
+
+    # ── Relationships ─────────────────────────────────────────────────────────
+    uploaded_by_user: Mapped[User] = relationship(
+        "User",
+        back_populates="media_assets",
+    )
+
+    # ── Computed properties: hybrid (usable in queries) ───────────────────────
+
+    @hybrid_property
+    def is_ready(self) -> bool:
+        """True if processing is complete and successful."""
+        return self.status == MediaStatus.READY
+
+    @is_ready.expression
+    def is_ready(cls):
+        """SQL: WHERE MediaAsset.is_ready"""
+        return cls.status == MediaStatus.READY
+
+    @hybrid_property
+    def is_approved(self) -> bool:
+        """True if moderation has approved this asset."""
+        return self.moderation_status == ModerationStatus.APPROVED
+
+    @is_approved.expression
+    def is_approved(cls):
+        """SQL: WHERE MediaAsset.is_approved"""
+        return cls.moderation_status == ModerationStatus.APPROVED
+
+    @hybrid_property
+    def is_displayable(self) -> bool:
+        """
+        True if the asset is both processed AND approved.
+        Only displayable assets appear on property listings.
+
+        Used in property queries:
+            JOIN media_assets ma ON ...
+            WHERE ma.is_displayable
+        """
+        return (
+            self.status == MediaStatus.READY
+            and self.moderation_status == ModerationStatus.APPROVED
+        )
+
+    @is_displayable.expression
+    def is_displayable(cls):
+        """SQL: WHERE MediaAsset.is_displayable"""
+        return sa.and_(
+            cls.status == MediaStatus.READY,
+            cls.moderation_status == ModerationStatus.APPROVED,
+        )
+
+    # ── Computed properties: display-only ─────────────────────────────────────
+
+    @property
+    def is_processing(self) -> bool:
+        """True if Celery is currently processing this asset."""
+        return self.status in (MediaStatus.PENDING, MediaStatus.PROCESSING)
+
+    @property
+    def has_failed(self) -> bool:
+        """True if processing failed. User may re-upload."""
+        return self.status == MediaStatus.FAILED
+
+    @property
+    def display_url(self) -> str:
+        """
+        Returns the best available URL for display.
+        Priority: optimized > original.
+        Used when rendering images in the frontend.
+        """
+        return self.optimized_url or self.original_url
+
+    # ── repr ──────────────────────────────────────────────────────────────────
+
+    def __repr__(self) -> str:
+        return (
+            f"<MediaAsset id={self.id} "
+            f"status={self.status.value!r} "
+            f"moderation={self.moderation_status.value!r}>"
+        )
+
+
+# ─── PropertyImage Model ─────────────────────────────────────────────────────
+
+class PropertyImage(Base, UUIDMixin, CreatedAtMixin):
+    """
+    A link between a property and a media asset, with display ordering.
+
+    Table: property_images
+
+    Why this is a separate model (not just a column on MediaAsset):
+      1. MediaAsset is generic — could be used for user avatars, documents, etc.
+      2. PropertyImage adds property-specific metadata: display_order, is_primary
+      3. Deleting a property removes image LINKS, not the storage files
+      4. One media asset could theoretically be linked to multiple properties
+
+    display_order:
+      Controls the order images appear on the property detail page.
+      0 = first image (hero image). Lower numbers appear first.
+      Set by the agent when arranging their listing photos.
+
+    is_primary:
+      Exactly one image per property should be is_primary=True.
+      This is the image shown in search results and property cards.
+      Enforced in service layer (not DB constraint — would need a partial
+      unique index which Alembic doesn't autogenerate).
+
+    Uses CreatedAtMixin (not TimestampMixin):
+      Property images are never updated (only deleted and recreated).
+      No updated_at needed.
+
+    Visibility rule (Rule 11):
+      A PropertyImage is only publicly visible when its linked
+      MediaAsset satisfies: status=ready AND moderation_status=approved.
+      Check via image.media_asset.is_displayable.
+    """
+
+    __tablename__ = "property_images"
+
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("properties.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment=(
+            "Which property this image belongs to. "
+            "CASCADE: property deleted → image links are meaningless. "
+            "Indexed: 'get all images for property X' queries."
+        ),
+    )
+    media_asset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_assets.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+        comment=(
+            "The media asset (file) this image references. "
+            "RESTRICT: cannot delete media asset while it's linked to a property. "
+            "Delete the PropertyImage first, then the MediaAsset."
+        ),
+    )
+    display_order: Mapped[int] = mapped_column(
+        Integer, nullable=False,
+        server_default=text("0"),
+        default=0,
+        comment="Display position. 0 = first (hero image). Lower numbers appear first.",
+    )
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False,
+        server_default=text("false"),
+        default=False,
+        comment=(
+            "The hero image for this property. Shown in search results and cards. "
+            "Exactly one per property (enforced in service layer)."
+        ),
+    )
+
+    # ── Relationships ─────────────────────────────────────────────────────────
+    listing: Mapped[Property] = relationship(
+        "Property",
+        back_populates="images",
+    )
+    media_asset: Mapped[MediaAsset] = relationship(
+        "MediaAsset",
+        lazy="joined",
+    )
+
+    # ── Computed properties: display-only ─────────────────────────────────────
+
+    @property
+    def is_visible(self) -> bool:
+        """
+        True if this image should be shown publicly.
+        Checks both processing status and moderation status of the linked asset.
+        """
+        return self.media_asset is not None and self.media_asset.is_displayable
+
+    @property
+    def display_url(self) -> Optional[str]:
+        """Best URL for display, or None if asset is not ready."""
+        if self.media_asset is None:
+            return None
+        return self.media_asset.display_url
+
+    @property
+    def thumbnail_url(self) -> Optional[str]:
+        """Thumbnail URL for grid/list views. Falls back to display_url."""
+        if self.media_asset and self.media_asset.thumbnail_url:
+            return self.media_asset.thumbnail_url
+        return self.display_url
+
+    # ── repr ──────────────────────────────────────────────────────────────────
+
+    def __repr__(self) -> str:
+        primary = "primary" if self.is_primary else f"order={self.display_order}"
+        return (
+            f"<PropertyImage id={self.id} "
+            f"property_id={self.property_id} "
+            f"{primary}>"
+        )
+
+
+# ─── VirtualTour Model ───────────────────────────────────────────────────────
+
+class VirtualTour(Base, UUIDMixin, CreatedAtMixin):
+    """
+    A URL to an external 360° virtual tour (Matterport, Kuula, etc.).
+
+    Table: virtual_tours
+
+    Why no MediaAsset:
+      Virtual tours are hosted externally (not on our storage).
+      They're embedded via iframe. No processing pipeline needed.
+      Just a URL + display order.
+
+    display_order:
+      Controls the order tours appear on the property detail page.
+      Most properties have 0 or 1 virtual tours.
+      Multiple tours are rare but supported (e.g. different floors).
+
+    Uses CreatedAtMixin (not TimestampMixin):
+      Virtual tours are never updated — only deleted and re-added.
+      No updated_at needed.
+    """
+
+    __tablename__ = "virtual_tours"
+
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("properties.id", ondelete="CASCADE"),
+        nullable=False,
+        comment=(
+            "Which property this tour belongs to. "
+            "CASCADE: property deleted → tour links are meaningless."
+        ),
+    )
+    url: Mapped[str] = mapped_column(
+        Text, nullable=False,
+        comment="Full URL to the external tour (e.g. 'https://my.matterport.com/show/?m=...').",
+    )
+    display_order: Mapped[int] = mapped_column(
+        Integer, nullable=False,
+        server_default=text("0"),
+        default=0,
+        comment="Display position. Most properties have at most one tour.",
+    )
+
+    # ── Constraints ───────────────────────────────────────────────────────────
+    __table_args__ = (
+        CheckConstraint(
+            "length(url) > 0",
+            name="chk_tour_url",
+        ),
+    )
+
+    # ── Relationships ─────────────────────────────────────────────────────────
+    listing: Mapped[Property] = relationship(
+        "Property",
+        back_populates="virtual_tours",
+    )
+
+    # ── repr ──────────────────────────────────────────────────────────────────
+
+    def __repr__(self) -> str:
+        return (
+            f"<VirtualTour id={self.id} "
+            f"property_id={self.property_id} "
+            f"order={self.display_order}>"
+        )
+
+
