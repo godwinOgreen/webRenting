@@ -7,6 +7,7 @@ no business logic, no HTTP exceptions, no schema imports.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,11 +48,13 @@ class UserRepository:
         if verified_only:
             base = base.where(User.verified.is_(True))
 
+        # Capture total aggregate matching rows using an explicit subquery block
         count_result = await self.db.execute(
             select(func.count()).select_from(base.subquery())
         )
         total = count_result.scalar_one()
 
+        # Fetch the exact page window slice
         result = await self.db.execute(
             base.order_by(User.created_at.desc())
             .offset((page - 1) * per_page)
@@ -73,7 +76,7 @@ class UserRepository:
 
     # ── Writes ────────────────────────────────────────────────────────────────
 
-    async def update(self, user: User, updates: dict) -> User:
+    async def update(self, user: User, updates: dict[str, Any]) -> User:
         """
         Apply field updates from a plain dict. Only touches keys
         present in the dict -- caller controls which fields to update
@@ -94,7 +97,7 @@ class UserRepository:
     async def update_notification_settings(
         self,
         settings: UserNotificationSettings,
-        updates: dict,
+        updates: dict[str, Any],
     ) -> UserNotificationSettings:
         """
         Apply field updates to notification settings from a plain dict.

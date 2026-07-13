@@ -39,7 +39,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-
+logging.getLogger("sqlalchemy.engine").propagate = False
 
 # ─── Lifespan (startup / shutdown) ───────────────────────────────────────────
 
@@ -212,9 +212,12 @@ app.add_middleware(
 # ─── Domain Routers ───────────────────────────────────────────────────────────
 
 from app.domains.auth.router import router as auth_router  # noqa: E402
+from app.domains.users.router import router as users_router  # noqa: E402
+from app.domains.users.router import agents_router  # noqa: E402
 
 app.include_router(auth_router)
-
+app.include_router(users_router)
+app.include_router(agents_router)
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
 
