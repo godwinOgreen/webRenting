@@ -35,7 +35,7 @@ class PropertyRepository:
     # ── Reads ─────────────────────────────────────────────────────────────────
 
     async def get_by_id(self, property_id: uuid.UUID) -> Optional[Property]:
-        """Fetch with features + images eagerly loaded."""
+        """Fetch a single property with features and images eagerly loaded."""
         result = await self.db.execute(
             select(Property)
             .where(Property.id == property_id)
@@ -49,11 +49,14 @@ class PropertyRepository:
     async def get_by_id_and_owner(
         self, property_id: uuid.UUID, owner_id: uuid.UUID
     ) -> Optional[Property]:
-        """Fetch only if the requesting user is the owner."""
+        """Fetch a property only if the requesting user is the owner."""
         result = await self.db.execute(
             select(Property)
             .where(Property.id == property_id, Property.owner_id == owner_id)
-            .options(selectinload(Property.features), selectinload(Property.images))
+            .options(
+                selectinload(Property.features),
+                selectinload(Property.images),
+            )
         )
         return result.scalar_one_or_none()
 
@@ -64,55 +67,50 @@ class PropertyRepository:
         per_page: int,
         approval_status: Optional[str] = None,
     ) -> tuple[list[Property], int]:
-        """Agent's own listings, all statuses."""
+        """Agent's own listings, all statuses. Returns (items, total)."""
         base = select(Property).where(Property.owner_id == owner_id)
         if approval_status:
             base = base.where(Property.approval_status == approval_status)
 
         count_q = select(func.count()).select_from(base.subquery())
-        total = (await self.db.execute(count_q)).scalar_one()
-
-        result = await self.db.execute(
+        data_q = (
             base.options(selectinload(Property.images))
             .order_by(Property.created_at.desc())
             .offset((page - 1) * per_page)
             .limit(per_page)
         )
-        return list(result.scalars().all()), total
+
+        count_res = await self.db.execute(count_q)
+        data_res = await self.db.execute(data_q)
+
+        return list(data_res.scalars().all()), count_res.scalar_one()
 
     async def search(self, f: PropertySearch) -> tuple[list[Property], int]:
         """
-        Public search — only published + non-expired listings.
+        Public search — only published, non-expired listings.
 
         PostGIS radius search uses ST_DWithin on Geography type for
-        accurate meter-based distance calculation regardless of latitude.
-        The cast to Geography converts the 4326-SRID point to a
-        geography object so ST_DWithin works in metres, not degrees.
+        accurate meter-based distance regardless of latitude.
         """
         base = (
             select(Property)
             .where(
                 Property.approval_status == ApprovalStatus.PUBLISHED,
-                Property.expires_at > datetime.now(tz=timezone.utc),
-            )
-            .options(
-                selectinload(Property.images),
-                selectinload(Property.features),
+                Property.expires_at > func.now(),
             )
         )
 
+        # String / enum filters
         if f.city:
-            base = base.where(
-                func.lower(Property.city) == f.city.lower()
-            )
+            base = base.where(func.lower(Property.city) == f.city.lower())
         if f.state:
-            base = base.where(
-                func.lower(Property.state) == f.state.lower()
-            )
+            base = base.where(func.lower(Property.state) == f.state.lower())
         if f.property_type:
             base = base.where(Property.property_type == f.property_type)
         if f.listing_status:
             base = base.where(Property.status == f.listing_status)
+
+        # Numeric range filters
         if f.min_price is not None:
             base = base.where(Property.price >= f.min_price)
         if f.max_price is not None:
@@ -123,6 +121,8 @@ class PropertyRepository:
             base = base.where(Property.bedrooms <= f.max_bedrooms)
         if f.min_bathrooms is not None:
             base = base.where(Property.bathrooms >= f.min_bathrooms)
+
+        # Boolean flags
         if f.featured_only:
             base = base.where(Property.featured.is_(True))
         if f.verified_only:
@@ -141,36 +141,43 @@ class PropertyRepository:
             ).cast("geography")
 
             base = base.where(
-                func.ST_DWithin(
-                    property_point,
-                    search_point,
-                    f.radius_km * 1000,   # km → metres
-                )
+                func.ST_DWithin(property_point, search_point, f.radius_km * 1000)   # km → metres
             )
 
-        # Feature filter: must have ALL requested features
+        # Must have ALL requested features (single subquery, not a loop)
         if f.feature_ids:
-            for feature_id in f.feature_ids:
-                base = base.where(
-                    Property.id.in_(
-                        select(PropertyFeatureMap.property_id).where(
-                            PropertyFeatureMap.feature_id == feature_id
-                        )
-                    )
-                )
+            num_features = len(f.feature_ids)
+            feature_subquery = (
+                select(PropertyFeatureMap.property_id)
+                .where(PropertyFeatureMap.feature_id.in_(f.feature_ids))
+                .group_by(PropertyFeatureMap.property_id)
+                .having(func.count(PropertyFeatureMap.feature_id) == num_features)
+                .subquery()
+            )
+            base = base.join(
+                feature_subquery,
+                Property.id == feature_subquery.c.property_id,
+            ).distinct()
 
+        # Count and fetch
         count_q = select(func.count()).select_from(base.subquery())
-        total = (await self.db.execute(count_q)).scalar_one()
-
-        result = await self.db.execute(
-            base.order_by(
-                Property.featured.desc(),   # featured first
+        data_q = (
+            base.options(
+                selectinload(Property.images),
+                selectinload(Property.features),
+            )
+            .order_by(
+                Property.featured.desc(),
                 Property.created_at.desc(),
             )
             .offset((page - 1) * f.per_page)
             .limit(f.per_page)
         )
-        return list(result.scalars().all()), total
+
+        count_res = await self.db.execute(count_q)
+        data_res = await self.db.execute(data_q)
+
+        return list(data_res.scalars().all()), count_res.scalar_one()
 
     async def list_features(self) -> list[PropertyFeature]:
         """All available amenity/feature options (seed data)."""
@@ -188,6 +195,7 @@ class PropertyRepository:
         data: PropertyCreate,
         owner_id: uuid.UUID,
     ) -> Property:
+        """Create a new property listing in DRAFT state."""
         prop = Property(
             owner_id=owner_id,
             title=data.title,
@@ -237,6 +245,7 @@ class PropertyRepository:
         rejection_reason: Optional[str] = None,
         approved_by: Optional[uuid.UUID] = None,
     ) -> Property:
+        """Update approval status and optional side-effect fields."""
         prop.approval_status = new_status
         if rejection_reason is not None:
             prop.rejection_reason = rejection_reason
@@ -245,25 +254,23 @@ class PropertyRepository:
         await self.db.flush()
         return prop
 
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
     async def _set_features(
         self,
         property_id: uuid.UUID,
         feature_ids: list[uuid.UUID],
     ) -> None:
-        """
-        Replace the full feature set for a property atomically.
-        DELETE existing rows, INSERT new ones in the same flush.
-        """
+        """Replace all features for a property. Delete existing, insert new."""
         await self.db.execute(
             delete(PropertyFeatureMap).where(
                 PropertyFeatureMap.property_id == property_id
             )
         )
-        for feature_id in feature_ids:
-            self.db.add(
-                PropertyFeatureMap(
-                    property_id=property_id,
-                    feature_id=feature_id,
-                )
-            )
+        if feature_ids:
+            maps = [
+                PropertyFeatureMap(property_id=property_id, feature_id=fid)
+                for fid in feature_ids
+            ]
+            self.db.add_all(maps)
         await self.db.flush()
