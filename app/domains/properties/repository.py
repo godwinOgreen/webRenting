@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+import asyncio
 from sqlalchemy import and_, func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -174,9 +175,10 @@ class PropertyRepository:
             .limit(f.per_page)
         )
 
-        count_res = await self.db.execute(count_q)
-        data_res = await self.db.execute(data_q)
-
+        count_res, data_res = await asyncio.gather(
+            self.db.execute(count_q),
+            self.db.execute(data_q)
+            )
         return list(data_res.scalars().all()), count_res.scalar_one()
 
     async def list_features(self) -> list[PropertyFeature]:
