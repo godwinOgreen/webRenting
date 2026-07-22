@@ -211,13 +211,17 @@ app.add_middleware(
 
 # ─── Domain Routers ───────────────────────────────────────────────────────────
 
-from app.domains.auth.router import router as auth_router  # noqa: E402
-from app.domains.users.router import router as users_router  # noqa: E402
-from app.domains.users.router import agents_router  # noqa: E402
+from app.domains.auth.router import router as auth_router          # noqa: E402
+from app.domains.users.router import router as users_router        # noqa: E402
+from app.domains.users.router import agents_router                 # noqa: E402
+from app.domains.properties.router import router as properties_router  # noqa: E402
+from app.domains.bookings.router import router as bookings_router      # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(agents_router)
+app.include_router(properties_router)
+app.include_router(bookings_router)
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
 
