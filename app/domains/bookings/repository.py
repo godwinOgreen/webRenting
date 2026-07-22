@@ -29,7 +29,22 @@ class BookingRepository:
     async def get_slot_by_id(
         self, slot_id: uuid.UUID
     ) -> Optional[AgentAvailability]:
+        """Fetch a single availability slot by ID."""
         return await self.db.get(AgentAvailability, slot_id)
+
+    async def get_slot_by_id_for_update(
+        self, slot_id: uuid.UUID
+    ) -> Optional[AgentAvailability]:
+        """
+        Fetch a slot with an exclusive row-level lock (SELECT FOR UPDATE).
+        Used during booking creation to prevent double-booking race conditions.
+        """
+        result = await self.db.execute(
+            select(AgentAvailability)
+            .where(AgentAvailability.id == slot_id)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
 
     async def list_open_slots(
         self, property_id: uuid.UUID
@@ -40,7 +55,7 @@ class BookingRepository:
             .where(
                 AgentAvailability.property_id == property_id,
                 AgentAvailability.is_booked.is_(False),
-                AgentAvailability.slot_start > datetime.now(tz=timezone.utc),
+                AgentAvailability.slot_start > func.now(),
             )
             .order_by(AgentAvailability.slot_start)
         )
@@ -61,6 +76,7 @@ class BookingRepository:
     async def create_slot(
         self, agent_id: uuid.UUID, data: AvailabilitySlotCreate
     ) -> AgentAvailability:
+        """Create a new availability slot."""
         slot = AgentAvailability(
             agent_id=agent_id,
             property_id=data.property_id,
@@ -72,12 +88,14 @@ class BookingRepository:
         return slot
 
     async def delete_slot(self, slot: AgentAvailability) -> None:
+        """Delete an availability slot."""
         await self.db.delete(slot)
         await self.db.flush()
 
     async def set_slot_booked(
         self, slot: AgentAvailability, booked: bool
     ) -> AgentAvailability:
+        """Set slot as booked or available."""
         slot.is_booked = booked
         await self.db.flush()
         return slot
@@ -85,11 +103,13 @@ class BookingRepository:
     # ── Booking reads ─────────────────────────────────────────────────────────
 
     async def get_by_id(self, booking_id: uuid.UUID) -> Optional[Booking]:
+        """Fetch a single booking by ID."""
         return await self.db.get(Booking, booking_id)
 
     async def get_by_id_and_user(
         self, booking_id: uuid.UUID, user_id: uuid.UUID
     ) -> Optional[Booking]:
+        """Fetch a booking only if it belongs to the given user."""
         result = await self.db.execute(
             select(Booking).where(
                 Booking.id == booking_id, Booking.user_id == user_id
@@ -115,41 +135,50 @@ class BookingRepository:
     async def list_for_renter(
         self, user_id: uuid.UUID, page: int, per_page: int
     ) -> tuple[list[Booking], int]:
+        """Paginated bookings for a renter."""
         base = select(Booking).where(Booking.user_id == user_id)
-        total = (
-            await self.db.execute(select(func.count()).select_from(base.subquery()))
-        ).scalar_one()
-        result = await self.db.execute(
+
+        count_q = select(func.count()).select_from(base.subquery())
+        data_q = (
             base.order_by(Booking.visit_time.desc())
             .offset((page - 1) * per_page)
             .limit(per_page)
         )
-        return list(result.scalars().all()), total
+
+        count_res = await self.db.execute(count_q)
+        data_res = await self.db.execute(data_q)
+
+        return list(data_res.scalars().all()), count_res.scalar_one()
 
     async def list_for_agent(
         self, agent_id: uuid.UUID, page: int, per_page: int
     ) -> tuple[list[Booking], int]:
-        """All bookings for properties owned by this agent."""
+        """Paginated bookings for all properties owned by an agent."""
         from app.domains.properties.models import Property
         base = (
             select(Booking)
             .join(Property, Booking.property_id == Property.id)
             .where(Property.owner_id == agent_id)
         )
-        total = (
-            await self.db.execute(select(func.count()).select_from(base.subquery()))
-        ).scalar_one()
-        result = await self.db.execute(
+
+        count_q = select(func.count()).select_from(base.subquery())
+        data_q = (
             base.order_by(Booking.visit_time.desc())
             .offset((page - 1) * per_page)
             .limit(per_page)
         )
-        return list(result.scalars().all()), total
+
+        count_res = await self.db.execute(count_q)
+        data_res = await self.db.execute(data_q)
+
+        return list(data_res.scalars().all()), count_res.scalar_one()
 
     async def count_pending_for_user(self, user_id: uuid.UUID) -> int:
-        """Used to enforce MAX_PENDING_BOOKINGS_PER_USER."""
+        """Count pending bookings for rate limiting."""
         result = await self.db.execute(
-            select(func.count()).select_from(Booking).where(
+            select(func.count())
+            .select_from(Booking)
+            .where(
                 Booking.user_id == user_id,
                 Booking.status == BookingStatus.PENDING,
             )
@@ -165,6 +194,7 @@ class BookingRepository:
         visit_time: datetime,
         data: BookingCreate,
     ) -> Booking:
+        """Create a new booking in PENDING state."""
         booking = Booking(
             property_id=property_id,
             user_id=user_id,
@@ -183,6 +213,7 @@ class BookingRepository:
         *,
         rejection_reason: Optional[str] = None,
     ) -> Booking:
+        """Update booking status and optional rejection reason."""
         booking.status = status
         if rejection_reason is not None:
             booking.rejection_reason = rejection_reason

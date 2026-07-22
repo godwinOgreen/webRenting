@@ -1,23 +1,14 @@
 """
 domains/bookings/router.py
 
-HTTP layer for bookings and agent availability. No business logic.
-
-Two role surfaces on the same resource:
-  - Renter actions: create, cancel, list own bookings
-  - Agent actions: create/delete slots, confirm/reject, list bookings
-    on their properties
-
-Booking creation requires require_verified_renter()
-(Rule 3) — renters book, agents don't.
-Availability slot management requires require_agent() since
-only agents manage their own calendars.
+HTTP API layer orchestrating routing, security guards, and response serializations 
+for viewing availability and property bookings.
 """
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
@@ -36,12 +27,12 @@ from app.shared.schemas import PaginatedResponse, SuccessResponse
 router = APIRouter(tags=["bookings"])
 
 
-# ── Agent availability ────────────────────────────────────────────────────────
+# ── Agent Availability ────────────────────────────────────────────────────────
 
 @router.post(
     "/availability",
     response_model=SuccessResponse[AvailabilitySlotRead],
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     summary="Create a viewing availability slot (agent only)",
 )
 async def create_slot(
@@ -59,6 +50,7 @@ async def create_slot(
 @router.get(
     "/availability/mine",
     response_model=SuccessResponse[list[AvailabilitySlotRead]],
+    status_code=status.HTTP_200_OK,
     summary="List own availability slots (agent only)",
 )
 async def list_my_slots(
@@ -72,6 +64,7 @@ async def list_my_slots(
 @router.get(
     "/properties/{property_id}/availability",
     response_model=SuccessResponse[list[AvailabilitySlotRead]],
+    status_code=status.HTTP_200_OK,
     summary="List open slots for a property (public)",
 )
 async def list_open_slots(
@@ -86,6 +79,7 @@ async def list_open_slots(
 @router.delete(
     "/availability/{slot_id}",
     response_model=SuccessResponse,
+    status_code=status.HTTP_200_OK,
     summary="Delete an unbooked availability slot (agent only)",
 )
 async def delete_slot(
@@ -103,7 +97,7 @@ async def delete_slot(
 @router.post(
     "/bookings",
     response_model=SuccessResponse[BookingRead],
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     summary="Book a property viewing (renter, requires subscription + KYC)",
 )
 async def create_booking(
@@ -112,7 +106,7 @@ async def create_booking(
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse[BookingRead]:
     """
-    Rule 3: bookings require an active subscription AND verified KYC.
+    Rule 3: Bookings require an active subscription AND verified KYC.
     Both checks are enforced together by require_verified_renter().
     """
     svc = BookingService(db)
@@ -125,11 +119,12 @@ async def create_booking(
 @router.get(
     "/bookings/mine",
     response_model=PaginatedResponse[BookingRead],
+    status_code=status.HTTP_200_OK,
     summary="List own bookings (renter)",
 )
 async def list_my_bookings(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[BookingRead]:
@@ -140,6 +135,7 @@ async def list_my_bookings(
 @router.get(
     "/bookings/{booking_id}",
     response_model=SuccessResponse[BookingRead],
+    status_code=status.HTTP_200_OK,
     summary="Get own booking details (renter)",
 )
 async def get_my_booking(
@@ -154,6 +150,7 @@ async def get_my_booking(
 @router.post(
     "/bookings/{booking_id}/cancel",
     response_model=SuccessResponse[BookingRead],
+    status_code=status.HTTP_200_OK,
     summary="Cancel own booking (renter)",
 )
 async def cancel_booking(
@@ -173,11 +170,12 @@ async def cancel_booking(
 @router.get(
     "/bookings/agent/mine",
     response_model=PaginatedResponse[BookingRead],
+    status_code=status.HTTP_200_OK,
     summary="List bookings on own properties (agent)",
 )
 async def list_agent_bookings(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
     current_user: User = Depends(require_agent()),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[BookingRead]:
@@ -188,6 +186,7 @@ async def list_agent_bookings(
 @router.get(
     "/bookings/agent/{booking_id}",
     response_model=SuccessResponse[BookingRead],
+    status_code=status.HTTP_200_OK,
     summary="Get booking on own property (agent)",
 )
 async def get_agent_booking(
@@ -204,6 +203,7 @@ async def get_agent_booking(
 @router.post(
     "/bookings/{booking_id}/confirm",
     response_model=SuccessResponse[BookingRead],
+    status_code=status.HTTP_200_OK,
     summary="Confirm a pending booking (agent)",
 )
 async def confirm_booking(
@@ -221,6 +221,7 @@ async def confirm_booking(
 @router.post(
     "/bookings/{booking_id}/reject",
     response_model=SuccessResponse[BookingRead],
+    status_code=status.HTTP_200_OK,
     summary="Reject a pending booking (agent, reason required)",
 )
 async def reject_booking(

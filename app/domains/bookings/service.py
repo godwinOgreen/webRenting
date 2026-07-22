@@ -6,9 +6,8 @@ Business logic for bookings and agent availability.
 No-double-booking rule (Decision 6 / Rule 6):
   Booking and AgentAvailability have no FK between them. This service
   is where the two are coordinated:
-    1. Look up the requested slot by slot_id
-    2. Verify it belongs to the target property and is_booked=False
-       and is in the future
+    1. Look up the requested slot by slot_id (with FOR UPDATE lock)
+    2. Verify it is_available (not booked, not in the past)
     3. Create the Booking, copying visit_time/property_id from the slot
     4. Flip the slot's is_booked=True in the SAME transaction
 
@@ -18,7 +17,7 @@ No-double-booking rule (Decision 6 / Rule 6):
   without a matching booking, or vice versa.
 
 Rejection requires a reason (Rule 7): enforced by BookingRejectRequest
-schema requiring a non-empty rejection_reason — see bookings/schemas.py.
+schema requiring min_length=5 — see bookings/schemas.py.
 
 State machine (bookings/models.py BookingStatus docstring):
   PENDING   → CONFIRMED  (agent confirms)
@@ -37,7 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import MAX_PENDING_BOOKINGS_PER_USER
-from app.core.exceptions import ConflictException, ForbiddenException, NotFoundException
+from app.core.exceptions import ConflictException, NotFoundException
 from app.domains.bookings.models import AgentAvailability, Booking, BookingStatus
 from app.domains.bookings.repository import BookingRepository
 from app.domains.bookings.schemas import (
@@ -52,9 +51,6 @@ from app.shared.schemas import PaginatedResponse
 
 logger = logging.getLogger(__name__)
 
-# States from which a slot can be freed back to available
-_FREES_SLOT = {BookingStatus.REJECTED, BookingStatus.CANCELLED}
-
 
 class BookingService:
     def __init__(self, db: AsyncSession) -> None:
@@ -65,10 +61,9 @@ class BookingService:
         self, property_id: uuid.UUID, owner_id: uuid.UUID
     ) -> Optional[Property]:
         """
-        Direct model query (not a PropertyRepository import) — services
-        may query other domains' models directly but must not import
-        another domain's repository or service class
-        (01_ARCHITECTURE.md section 3).
+        Direct model query — services may query other domains' models
+        directly but must not import another domain's repository or
+        service class.
         """
         result = await self.db.execute(
             select(Property).where(
@@ -135,13 +130,13 @@ class BookingService:
         data: BookingCreate,
     ) -> BookingRead:
         """
-        Create a booking against an open slot. See module docstring for
-        the slot-coordination sequence.
+        Create a booking against an open slot. Uses FOR UPDATE row lock
+        on the slot to prevent double-booking race conditions.
 
         Raises:
             NotFoundException: slot doesn't exist
-            ConflictException: slot already booked, slot is in the past,
-                                or renter has too many pending bookings
+            ConflictException: slot unavailable, past, or renter has
+                               too many pending bookings
         """
         pending_count = await self.repo.count_pending_for_user(renter.id)
         if pending_count >= MAX_PENDING_BOOKINGS_PER_USER:
@@ -154,7 +149,8 @@ class BookingService:
                 error_code="max_pending_bookings",
             )
 
-        slot = await self.repo.get_slot_by_id(data.slot_id)
+        # Pessimistic lock prevents two renters booking the same slot
+        slot = await self.repo.get_slot_by_id_for_update(data.slot_id)
         if slot is None:
             raise NotFoundException(message="Availability slot not found")
 
@@ -162,7 +158,6 @@ class BookingService:
             raise ConflictException(
                 message="This slot is no longer available",
                 error_code="slot_unavailable",
-                log_context={"slot_id": str(slot.id)},
             )
 
         booking = await self.repo.create(
@@ -275,15 +270,17 @@ class BookingService:
         property_id + visit_time and set is_booked=False.
 
         No FK between booking and slot — this is a best-effort match
-        on (property_id, slot_start == visit_time). If no matching slot
-        is found, this is a no-op.
+        on (property_id, slot_start == visit_time). Uses FOR UPDATE
+        to prevent concurrent slot state conflicts.
         """
         result = await self.db.execute(
-            select(AgentAvailability).where(
+            select(AgentAvailability)
+            .where(
                 AgentAvailability.property_id == booking.property_id,
                 AgentAvailability.slot_start == booking.visit_time,
                 AgentAvailability.is_booked.is_(True),
             )
+            .with_for_update()
         )
         slot = result.scalar_one_or_none()
         if slot is not None:
