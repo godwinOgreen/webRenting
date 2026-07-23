@@ -38,7 +38,7 @@ One row per period:
 
 Pricing (from constants.py):
   Renter plan: ₦1,000/month (100,000 kobo)
-  Agent plan:  ₦10,000/month (10,000,000 kobo)
+  Agent plan:  ₦10,000/month (1,000,000 kobo)
 
 payment_id is nullable:
   Admin may grant a free subscription (testing, promotions, compensation).
@@ -228,14 +228,8 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
     @hybrid_property
     def is_active(self) -> bool:
         """
-        The definitive access check. Use this everywhere.
-
-        Checks BOTH:
-          1. status in (active, cancelled) — cancelled still grants access
-          2. expires_at > now() — real-time check regardless of Celery lag
-
-        A cancelled subscription is still active until expires_at.
-        This matches standard SaaS behaviour — users keep access until period ends.
+        Definitive access check.
+        A CANCELLED subscription remains active until expires_at.
         """
         now = datetime.now(tz=timezone.utc)
         return (
@@ -245,10 +239,10 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
 
     @is_active.expression
     def is_active(cls):
-        """SQL: WHERE Subscription.is_active"""
+        """SQL: WHERE Subscription.is_active using clock_timestamp() for accuracy."""
         return sa.and_(
             cls.status.in_([SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED]),
-            cls.expires_at > func.now(),
+            cls.expires_at > func.clock_timestamp(),
         )
 
     @hybrid_property
@@ -259,7 +253,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
     @is_expired.expression
     def is_expired(cls):
         """SQL: WHERE Subscription.is_expired"""
-        return cls.expires_at < func.now()
+        return cls.expires_at < func.clock_timestamp()
 
     @hybrid_property
     def is_cancelled(self) -> bool:
@@ -279,7 +273,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         Used by Celery to decide when to send renewal warnings.
         """
         delta = self.expires_at - datetime.now(tz=timezone.utc)
-        return max(0, delta.days)
+        return max(0, int(delta.total_seconds() // 86400))
 
     @property
     def is_expiring_soon(self) -> bool:
@@ -294,10 +288,9 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
     def renewal_amount_kobo(self) -> int:
         """
         Expected renewal amount in kobo based on plan type.
-        Used when creating the renewal payment intent.
 
         Renter: ₦1,000 = 100,000 kobo
-        Agent:  ₦10,000 = 10,000,000 kobo
+        Agent:  ₦10,000 = 1,000,000 kobo
         """
         from app.constants import RENTER_PLAN_PRICE_KOBO, AGENT_PLAN_PRICE_KOBO
         return (
@@ -319,14 +312,13 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         payment: Payment,
         plan_type: SubscriptionPlan,
         duration_days: int = 30,
+        current_active_sub: Optional[Subscription] = None,
     ) -> Subscription:
         """
         Factory method — creates a Subscription from a confirmed Payment.
-        Called by payment_service.py after Paystack webhook confirms success.
 
-        Usage:
-            sub = Subscription.create_from_payment(payment, SubscriptionPlan.AGENT)
-            db.add(sub)
+        If current_active_sub is provided and unexpired, the new subscription
+        stacks onto current_active_sub.expires_at (standard SaaS early renewal).
 
         For free subscriptions (no payment), construct manually:
             sub = Subscription(
@@ -339,13 +331,19 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
             )
         """
         now = datetime.now(tz=timezone.utc)
+
+        if current_active_sub and current_active_sub.expires_at > now:
+            started_at = current_active_sub.expires_at
+        else:
+            started_at = now
+
         return cls(
             user_id=payment.user_id,
             payment_id=payment.id,
             plan_type=plan_type,
             status=SubscriptionStatus.ACTIVE,
-            started_at=now,
-            expires_at=now + timedelta(days=duration_days),
+            started_at=started_at,
+            expires_at=started_at + timedelta(days=duration_days),
         )
 
     # ── repr ──────────────────────────────────────────────────────────────────
