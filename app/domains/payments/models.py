@@ -8,7 +8,7 @@ Enums: PaymentStatus
 Payment is a transaction record — what was paid, when, and by whom.
 It is NOT the same as Subscription (Decision 5 / Rule 13).
 
-  PAYMENT     = "you paid ₦10,000 on 1st Jan"  (immutable transaction record)
+  PAYMENT      = "you paid ₦10,000 on 1st Jan"  (immutable transaction record)
   SUBSCRIPTION = "your access is active until 31st Jan" (mutable access record)
 
 A successful Payment creates a Subscription. Checking PAYMENTS to gate
@@ -22,6 +22,9 @@ Key Paystack flow:
   5. Updates status = successful → creates Subscription row
 
 The paystack_reference UNIQUE constraint prevents duplicate webhook processing.
+
+Amount is stored in kobo (Paystack's native unit). 100 kobo = ₦1.
+Use amount_in_naira for display. Schema accepts naira, service converts.
 
 Why subscription_type is a VARCHAR and not a FK or PostgreSQL ENUM:
   The subscription hasn't been created yet when the payment row is first
@@ -40,14 +43,14 @@ from typing import TYPE_CHECKING, Optional
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    CheckConstraint, DateTime, ForeignKey, Numeric, String, text, func,
+    BigInteger, CheckConstraint, DateTime, ForeignKey, String, text, func,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, UpdatedAtMixin
+from app.db.mixins import UUIDMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.domains.subscriptions.models import Subscription
@@ -60,10 +63,10 @@ class PaymentStatus(str, enum.Enum):
     """
     Lifecycle of a single Paystack transaction.
 
-    PENDING   → created, waiting for user to complete payment on Paystack
+    PENDING    → created, waiting for user to complete payment on Paystack
     SUCCESSFUL → Paystack webhook confirmed payment received
-    FAILED    → Paystack webhook reported failure (card declined, timeout, etc.)
-    REFUNDED  → manual refund issued (via Paystack dashboard or API)
+    FAILED     → Paystack webhook reported failure (card declined, timeout, etc.)
+    REFUNDED   → manual refund issued (via Paystack dashboard or API)
     """
     PENDING = "pending"
     SUCCESSFUL = "successful"
@@ -82,21 +85,19 @@ _payment_status_col = sa.Enum(
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 
-class Payment(Base, UUIDMixin, UpdatedAtMixin):
+class Payment(Base, UUIDMixin, TimestampMixin):
     """
-    Immutable-ish transaction record. Status changes (pending → successful/failed)
-    are tracked via updated_at (PostgreSQL trigger) and the Paystack webhook.
+    Transaction record for Paystack payments.
 
     Table: payments
 
-    Uses UpdatedAtMixin (not TimestampMixin) because paid_at serves as the
-    creation timestamp — when the payment was actually made. created_at would
-    be when the row was inserted (before user paid), which is less useful.
+    Uses TimestampMixin:
+      - created_at = when the payment was initiated (row inserted, before user pays)
+      - paid_at    = when Paystack confirmed payment received (webhook)
 
-    Why subscription_type is a VARCHAR and not a FK to subscriptions:
-      The subscription hasn't been created yet when the payment row is first
-      inserted. We store the intended plan type as a string for reference.
-      The actual plan type lives on the Subscription row created after success.
+    Amount stored in kobo (Paystack's native unit). 100 kobo = ₦1.
+    Schema accepts naira from the client, service converts to kobo.
+    Use amount_in_naira property for display.
     """
 
     __tablename__ = "payments"
@@ -114,16 +115,15 @@ class Payment(Base, UUIDMixin, UpdatedAtMixin):
         String(50), nullable=True,
         comment=(
             "Intended plan: 'renter' or 'agent'. String, not FK or PostgreSQL enum. "
-            "Validated by Pydantic SubscriptionPlanType at API boundary. "
-            "The Subscription row is created after webhook confirms success. "
-            "No migration needed to add new plan types."
+            "Validated by Pydantic at API boundary. "
+            "The Subscription row is created after webhook confirms success."
         ),
     )
 
     # ── Transaction details ───────────────────────────────────────────────────
-    amount: Mapped[Decimal] = mapped_column(
-        Numeric(15, 2), nullable=False,
-        comment="Amount in kobo (Paystack uses kobo). e.g. 100000 = ₦1,000.",
+    amount: Mapped[int] = mapped_column(
+        BigInteger, nullable=False,
+        comment="Amount in kobo (Paystack native unit). 100000 = ₦1,000.",
     )
     status: Mapped[PaymentStatus] = mapped_column(
         _payment_status_col, nullable=False,
@@ -135,7 +135,7 @@ class Payment(Base, UUIDMixin, UpdatedAtMixin):
         String(50), nullable=False,
         server_default=text("'paystack'"),
         default="paystack",
-        comment="Payment gateway name. Currently always 'paystack'. Stored as string for flexibility.",
+        comment="Payment gateway name. Currently always 'paystack'.",
     )
 
     # ── Paystack-specific fields ──────────────────────────────────────────────
@@ -144,8 +144,7 @@ class Payment(Base, UUIDMixin, UpdatedAtMixin):
         unique=True,
         index=True,
         comment=(
-            "Paystack transaction reference (e.g. 'TXN_abc123xyz'). "
-            "UNIQUE constraint prevents duplicate webhook handling. "
+            "Paystack transaction reference. UNIQUE prevents duplicate webhook handling. "
             "Set when payment is initialized. Used to match inbound webhooks."
         ),
     )
@@ -155,7 +154,7 @@ class Payment(Base, UUIDMixin, UpdatedAtMixin):
     )
     expires_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True,
-        comment="Not the subscription expiry — the payment link/session expiry if applicable.",
+        comment="Payment link/session expiry if applicable.",
     )
 
     # ── Constraints ───────────────────────────────────────────────────────────
@@ -169,8 +168,6 @@ class Payment(Base, UUIDMixin, UpdatedAtMixin):
         back_populates="payments",
     )
 
-    # One payment creates one or zero subscriptions
-    # (zero if payment failed before subscription was created)
     subscriptions: Mapped[list[Subscription]] = relationship(
         "Subscription",
         back_populates="payment",
@@ -206,12 +203,8 @@ class Payment(Base, UUIDMixin, UpdatedAtMixin):
 
     @property
     def amount_in_naira(self) -> Decimal:
-        """
-        Paystack works in kobo (100 kobo = ₦1).
-        This converts to naira for display purposes.
-        Store in kobo, display in naira.
-        """
-        return self.amount / 100
+        """Convert kobo to naira for display. 100 kobo = ₦1."""
+        return Decimal(self.amount) / 100
 
     # ── repr ──────────────────────────────────────────────────────────────────
 
