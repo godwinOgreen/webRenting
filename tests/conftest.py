@@ -13,7 +13,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 
-TEST_DATABASE_URL = "postgresql+psycopg://postgres@localhost:5432/webrenting_test"
+TEST_DATABASE_URL = "postgresql+psycopg://postgres:g0dw1ndb@localhost:5432/webrenting_test"
 
 engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
@@ -105,3 +105,42 @@ async def admin_token(client: AsyncClient) -> str:
         "password": "AdminPass123!",
     })
     return resp.json()["data"]["access_token"]
+
+    # tests/conftest.py -- add these fixtures
+
+@pytest_asyncio.fixture
+async def test_user(client: AsyncClient) -> User:
+    """Register a renter and return the User model (from DB)."""
+    await client.post("/auth/register", json={
+        "email": "testuser@test.com",
+        "password": "TestPass123!",
+        "first_name": "Test",
+        "last_name": "User",
+        "role": "renter",
+        "accept_terms": True,
+    })
+    # Fetch from DB to return the model
+    from sqlalchemy import select
+    result = await db_session.execute(
+        select(User).where(User.email == "testuser@test.com")
+    )
+    return result.scalar_one()
+
+
+@pytest_asyncio.fixture
+async def auth_headers(client: AsyncClient) -> dict[str, str]:
+    """Register a user and return auth headers with valid JWT."""
+    await client.post("/auth/register", json={
+        "email": "testuser@test.com",
+        "password": "TestPass123!",
+        "first_name": "Test",
+        "last_name": "User",
+        "role": "renter",
+        "accept_terms": True,
+    })
+    resp = await client.post("/auth/login", json={
+        "email": "testuser@test.com",
+        "password": "TestPass123!",
+    })
+    token = resp.json()["data"]["access_token"]
+    return {"Authorization": f"Bearer {token}"}
