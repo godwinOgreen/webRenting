@@ -109,18 +109,19 @@ def require_subscription() -> Callable:
             pass  # Redis failure → fall through to DB
 
         # Slow path: DB query
+        # In require_subscription(), change the DB query to:
         result = await db.execute(
             select(Subscription)
             .where(
                 Subscription.user_id == current_user.id,
-                Subscription.status == SubscriptionStatus.ACTIVE,
+                Subscription.is_active,
             )
             .order_by(Subscription.expires_at.desc())
             .limit(1)
         )
         subscription: Optional[Subscription] = result.scalar_one_or_none()
 
-        if subscription is None or not subscription.is_active:
+        if subscription is None:
             raise ForbiddenException(
                 message="An active subscription is required for this action",
                 error_code="subscription_required",
