@@ -308,6 +308,13 @@ class PropertyService:
         updated = await self.repo.update_status(prop, ApprovalStatus.PUBLISHED)
         logger.info("Property published",
                     extra={"property_id": str(property_id)})
+        
+        from app.tasks.celery_app import celery_app
+        celery_app.send_task(
+            "app.tasks.saved_search_alerts.notify_matching_saved_searches",
+            args=[str(property_id)],
+        )
+        
         return PropertyRead.model_validate(updated)
 
     async def mark_reserved(
