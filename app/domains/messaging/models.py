@@ -4,34 +4,34 @@
 Domain: Messaging
 Tables: conversations, conversation_participants, messages
 
-Three models that together form the in-app messaging system.
+Three models implementing the conversation-thread messaging system.
 
 Architecture:
-  Conversation            — a thread (optionally linked to a property)
-  ConversationParticipant   — junction table (who's in the thread + read tracking)
-  Message                 — a single message within a thread
+  Conversation             — one chat thread, optionally tied to a property 
+                            (through the API, a conversation always has a property_id)
+  ConversationParticipant  — composite PK (conversation_id, user_id),
+                             tracks last_read_at for unread counts
+  Message                  — individual messages within a conversation
 
-How conversations start:
-  1. Renter views a property and clicks "Contact Agent"
-  2. messaging_service creates a Conversation (property_id set)
-  3. messaging_service adds two ConversationParticipant rows:
-     - the renter (user_id=renter)
-     - the property owner (user_id=agent)
-  4. First Message is sent in the same transaction
+Why this design instead of sender_id/receiver_id on each message:
+  - One query loads an entire thread: WHERE conversation_id = X
+  - Unread count = COUNT(messages) WHERE created_at > participant.last_read_at
+  - Supports >2 participants in future (e.g. admin joins a dispute thread)
+  - WebSocket clients subscribe to one conversation_id channel
 
-Read tracking:
-  ConversationParticipant.last_read_at tracks when a user last opened a
-  conversation. Messages with created_at > last_read_at are "unread" for
-  that user.
-
-Why conversations are never deleted:
-  Conversations are permanent records for dispute resolution and auditing.
+Flow (handled in messaging_service.py):
+  1. Renter clicks "Message Agent" on a property
+  2. Service checks: does a Conversation exist for (property_id, renter, agent)?
+     - No  → create Conversation + 2 ConversationParticipant rows
+     - Yes → reuse existing Conversation
+  3. Messages are inserted with conversation_id + sender_id
+  4. On read, update the reader's ConversationParticipant.last_read_at
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 import sqlalchemy as sa
@@ -58,12 +58,12 @@ if TYPE_CHECKING:
 
 class Conversation(Base, UUIDMixin, CreatedAtMixin):
     """
-    A messaging thread between two or more users.
+    A single chat thread. property_id is nullable — a conversation may not
+    be about a specific property (e.g. a support thread).
     """
 
     __tablename__ = "conversations"
 
-    # ── Optional link to property ─────────────────────────────────────────────
     property_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("properties.id", ondelete="SET NULL"),
@@ -71,27 +71,23 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
         index=True,
         comment=(
             "The property this conversation is about. "
-            "SET NULL: property deleted → conversation survives. "
-            "NULL for support conversations or admin-initiated threads."
+            "SET NULL: property deleted → conversation survives."
         ),
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────
 
-    # The property (nullable — may be a support conversation)
     listing: Mapped[Optional[Property]] = relationship(
         "Property",
         back_populates="conversations",
     )
 
-    # Who's in this thread
     participants: Mapped[list[ConversationParticipant]] = relationship(
         "ConversationParticipant",
         back_populates="conversation",
         cascade="all, delete-orphan",
     )
 
-    # All messages in this thread, ordered chronologically
     messages: Mapped[list[Message]] = relationship(
         "Message",
         back_populates="conversation",
@@ -99,12 +95,46 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
         order_by="Message.created_at",
     )
 
+    # ── Computed / Helper Methods ─────────────────────────────────────────────
+
+    @property
+    def last_message(self) -> Optional[Message]:
+        """Most recent message in the thread, or None if empty."""
+        return self.messages[-1] if self.messages else None
+
+    def get_participant(self, user_id: uuid.UUID) -> Optional[ConversationParticipant]:
+        """Find a specific participant's row to check/update last_read_at."""
+        for p in self.participants:
+            if p.user_id == user_id:
+                return p
+        return None
+
+    def unread_count_for(self, user_id: uuid.UUID) -> int:
+        """
+        Number of messages this user hasn't read yet.
+        
+        NOTE: Iterates loaded in-memory messages. Use aggregate DB queries
+        for bulk inbox listing to avoid N+1 queries.
+        """
+        participant = self.get_participant(user_id)
+        last_read = participant.last_read_at if participant else None
+
+        count = 0
+        for msg in self.messages:
+            if msg.sender_id == user_id:
+                continue
+            if last_read is None or msg.created_at > last_read:
+                count += 1
+        return count
+
     # ── repr ──────────────────────────────────────────────────────────────────
 
     def __repr__(self) -> str:
         return (
             f"<Conversation id={self.id} "
-            f"property_id={self.property_id}>"
+            f"property_id={self.property_id} "
+            f"participants={len(self.participants)} "
+            f"messages={len(self.messages)}>"
         )
 
 
@@ -112,7 +142,7 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
 
 class ConversationParticipant(Base):
     """
-    Junction table linking users to conversations they're participating in.
+    Junction table linking users to conversations they participate in.
     Composite PK (conversation_id, user_id).
     """
 
@@ -123,7 +153,7 @@ class ConversationParticipant(Base):
         ForeignKey("conversations.id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
-        comment="CASCADE: conversation deleted → participant links are removed.",
+        comment="CASCADE: conversation deleted → participant links removed.",
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -131,7 +161,7 @@ class ConversationParticipant(Base):
         primary_key=True,
         nullable=False,
         index=True,
-        comment="RESTRICT: cannot delete user who is in active conversations.",
+        comment="RESTRICT: cannot delete a user with active conversation history.",
     )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -143,12 +173,13 @@ class ConversationParticipant(Base):
         DateTime(timezone=True),
         nullable=True,
         comment=(
-            "When the user last opened this conversation. "
+            "Updated when the user opens this conversation. "
             "NULL = never opened (all messages are unread)."
         ),
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────
+
     conversation: Mapped[Conversation] = relationship(
         "Conversation",
         back_populates="participants",
@@ -157,6 +188,12 @@ class ConversationParticipant(Base):
         "User",
         back_populates="conversation_participants",
     )
+
+    # ── Helper Methods ────────────────────────────────────────────────────────
+
+    def mark_read(self) -> None:
+        """Sets last_read_at to current UTC time in memory."""
+        self.last_read_at = datetime.now(tz=timezone.utc)
 
     # ── repr ──────────────────────────────────────────────────────────────────
 
@@ -172,7 +209,7 @@ class ConversationParticipant(Base):
 
 class Message(Base, UUIDMixin, CreatedAtMixin):
     """
-    A single message within a conversation.
+    A single message within a conversation thread.
     """
 
     __tablename__ = "messages"
@@ -198,6 +235,7 @@ class Message(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Constraints & Indexes ─────────────────────────────────────────────────
+
     __table_args__ = (
         CheckConstraint(
             "length(trim(body)) > 0 AND length(body) <= 5000",
@@ -211,6 +249,7 @@ class Message(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────
+
     conversation: Mapped[Conversation] = relationship(
         "Conversation",
         back_populates="messages",
@@ -223,7 +262,7 @@ class Message(Base, UUIDMixin, CreatedAtMixin):
     # ── repr ──────────────────────────────────────────────────────────────────
 
     def __repr__(self) -> str:
-        preview = self.body[:50] + "..." if len(self.body) > 50 else self.body
+        preview = self.body[:30] + "..." if len(self.body) > 30 else self.body
         return (
             f"<Message id={self.id} "
             f"conversation_id={self.conversation_id} "
