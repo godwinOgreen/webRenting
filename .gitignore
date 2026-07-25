@@ -28,6 +28,8 @@ uploads/*
 .pytest_cache/
 htmlcov/
 .coverage
+test_detailed.txt
+test_output.txt
 
 # OS
 .DS_Store
