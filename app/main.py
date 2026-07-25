@@ -11,7 +11,7 @@ Plus:
   - CORSMiddleware (BACKEND_CORS_ORIGINS from config)
   - Lifespan (connect Redis on startup, dispose on shutdown)
   - Health check endpoint
-  - Domain routers registered below
+  - All domain routers via api/v1/router.py
 
 All error responses share the same JSON shape:
   {"success": false, "message": "...", "errors": {...}, "error_code": "..."}
@@ -209,19 +209,12 @@ app.add_middleware(
 )
 
 
-# ─── Domain Routers ───────────────────────────────────────────────────────────
+# ─── Domain Routers (all routes under /api/v1) ───────────────────────────────
 
-from app.domains.auth.router import router as auth_router          # noqa: E402
-from app.domains.users.router import router as users_router        # noqa: E402
-from app.domains.users.router import agents_router                 # noqa: E402
-from app.domains.properties.router import router as properties_router  # noqa: E402
-from app.domains.bookings.router import router as bookings_router      # noqa: E402
+from app.api.v1.router import api_router  # noqa: E402
 
-app.include_router(auth_router)
-app.include_router(users_router)
-app.include_router(agents_router)
-app.include_router(properties_router)
-app.include_router(bookings_router)
+app.include_router(api_router, prefix="/api/v1")
+
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
 
