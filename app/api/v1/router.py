@@ -16,6 +16,7 @@ from app.domains.bookings.router import router as bookings_router
 from app.domains.payments.router import router as payments_router
 from app.domains.subscriptions.router import router as subscriptions_router
 from app.domains.messaging.router import router as messaging_router
+from app.domains.notifications.router import router as notifications_router
 
 api_router = APIRouter()
 
@@ -27,10 +28,9 @@ api_router.include_router(bookings_router)
 api_router.include_router(payments_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(messaging_router)
+api_router.include_router(notifications_router)
 
 # ─── Add new domain routers here as they're built ───
-# from app.domains.notifications.router import router as notifications_router
-# api_router.include_router(notifications_router)
 # from app.domains.media.router import router as media_router
 # api_router.include_router(media_router)
 # from app.domains.reviews.router import router as reviews_router

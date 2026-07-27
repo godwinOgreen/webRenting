@@ -43,22 +43,47 @@ Why notifications are never deleted:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-import sqlalchemy as sa
-from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, String, Text, text,
-)
+from sqlalchemy import Boolean, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin, CreatedAtMixin
+from app.db.mixins import CreatedAtMixin, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.users.models import User
+
+
+# ─── Event type → settings column mapping ────────────────────────────────────
+
+# Maps event_type strings (passed to NotificationService.create())
+# to the corresponding boolean toggle on UserNotificationSettings.
+#
+# None = mandatory event (no per-user toggle, always sent).
+# Fail-open: unmapped event types are always delivered.
+NOTIFY_TYPE_MAP: dict[str, Optional[str]] = {
+    "new_message": "notify_new_message",
+    "booking_update": "notify_booking_update",
+    "listing_approved": "notify_listing_approved",
+    "saved_search_match": "notify_saved_search",
+    "listing_expiring": "notify_listing_expiry",
+    "subscription_expiry": "notify_subscription",
+    "kyc_verified": None,
+    "report_resolved": None,
+}
+
+# Mapping for frontend deep-link route generation
+RELATED_TYPE_TO_PATH: dict[str, str] = {
+    "booking": "bookings",
+    "property": "properties",
+    "message": "messages",
+    "subscription": "subscriptions",
+    "kyc": "kyc",
+    "report": "reports",
+}
 
 
 # ─── Notification Model ──────────────────────────────────────────────────────
@@ -66,10 +91,9 @@ if TYPE_CHECKING:
 class Notification(Base, UUIDMixin, CreatedAtMixin):
     """
     A single notification sent to a user.
-
     Table: notifications
 
-    Uses CreatedAtMixin (not TimestampMixin):
+        Uses CreatedAtMixin (not TimestampMixin):
       Notifications are never updated. The only mutation is is_read toggling,
       which doesn't warrant an updated_at trigger.
 
@@ -88,37 +112,49 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
     """
 
     __tablename__ = "notifications"
+    __table_args__ = (
+        # Composite Index: Fast feed pagination ordered by recency
+        Index(
+            "ix_notifications_user_created_at",
+            "user_id",
+            text("created_at DESC"),
+        ),
+        # Partial Index: Ultra-fast unread count badge queries
+        Index(
+            "ix_notifications_unread_user",
+            "user_id",
+            postgresql_where=text("is_read = false"),
+        ),
+    )
 
     # ── Who receives this notification ────────────────────────────────────────
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
-        comment=(
-            "CASCADE: user deleted → their notifications are disposable. "
-            "Indexed: notification feed queries filter by user_id."
-        ),
+        comment="CASCADE: user deleted -> their notifications are disposable.",
     )
 
     # ── Content ───────────────────────────────────────────────────────────────
     type: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
         comment=(
             "Notification type. Drives icon/color on frontend. "
             "Examples: booking_confirmed, property_approved, new_message, "
             "subscription_expiring, kyc_verified, report_resolved."
-        ),
+        )
     )
     message: Mapped[str] = mapped_column(
-        String(1000), nullable=False,
-        comment="Human-readable notification text. Shown in notification feed.",
+        String(1000),
+        nullable=False,
+        comment="Human-readable notification text shown in notification feed.",
     )
     is_read: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         server_default=text("false"),
         default=False,
-        index=True,
         comment=(
             "False = unread (bold on frontend). True = read. "
             "Toggled by PATCH /notifications/{id}/read. "
@@ -128,7 +164,8 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
 
     # ── Deep-link (v9.2) ─────────────────────────────────────────────────────
     related_type: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+        String(50),
+        nullable=True,
         comment=(
             "Deep-link target type. Combined with related_id, frontend navigates "
             "directly to the relevant entity. Valid values: "
@@ -137,7 +174,8 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
         ),
     )
     related_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
         comment=(
             "Deep-link target ID. Combined with related_type, frontend constructs "
             "the exact URL. Example: related_type='booking', related_id='abc-123' "
@@ -155,21 +193,13 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
 
     @hybrid_property
     def is_unread(self) -> bool:
-        """Inverted is_read — more natural for filtering unread notifications."""
+        """Inverted is_read boolean for Python-side checks."""
         return not self.is_read
 
     @is_unread.expression
     def is_unread(cls):
-        """
-        SQL: WHERE Notification.is_unread
-
-        Used in unread count query:
-            stmt = select(func.count()).where(
-                Notification.user_id == user_id,
-                Notification.is_unread,
-            )
-        """
-        return cls.is_read == False  # noqa: E712
+        """SQL expression: WHERE Notification.is_unread"""
+        return cls.is_read.is_(False)
 
     # ── Computed properties: display-only ─────────────────────────────────────
 
@@ -186,26 +216,19 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
 
         Frontend uses this directly:
             router.push(notification.deep_link_path)
-
-        Example:
-            related_type="booking", related_id="abc-123" → "/bookings/abc-123"
-            related_type="property", related_id="def-456" → "/properties/def-456"
+        Example: related_type="booking", related_id="abc-123" -> "/bookings/abc-123"
+        Returns None if missing identifiers or unrecognized type.
         """
+        # Guard clause: Both related_type AND related_id must be non-None
         if not self.has_deep_link:
             return None
-        # Map related_type to URL path segment
-        type_to_path = {
-            "booking": "bookings",
-            "property": "properties",
-            "message": "messages",
-            "subscription": "subscriptions",
-            "kyc": "kyc",
-            "report": "reports",
-        }
-        path_segment = type_to_path.get(self.related_type)
-        if path_segment is None:
+
+        path_segment = RELATED_TYPE_TO_PATH.get(self.related_type)  # type: ignore[arg-type]
+        if not path_segment:
             return None
+
         return f"/{path_segment}/{self.related_id}"
+    
 
     # ── repr ──────────────────────────────────────────────────────────────────
 
@@ -224,7 +247,6 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
 class UserNotificationSettings(Base, UUIDMixin, TimestampMixin):
     """
     Per-user notification preferences. One row per user (1:1 relationship).
-
     Table: user_notification_settings
 
     Created once when user registers (in auth_service.register()).
@@ -254,85 +276,46 @@ class UserNotificationSettings(Base, UUIDMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
-        comment=(
-            "One settings row per user. UNIQUE enforces 1:1. "
-            "CASCADE: user deleted → their settings are disposable."
-        ),
+        comment="One settings row per user. UNIQUE enforces 1:1.",
     )
 
     # ── Channel toggles (master switches) ─────────────────────────────────────
     email_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="Master switch for email notifications. If False, no emails sent.",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
     push_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="Master switch for push notifications (FCM). If False, no pushes sent.",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
     sms_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("false"),
-        default=False,
-        comment=(
-            "Master switch for SMS notifications. Default False (SMS costs money). "
-            "Only enabled for critical alerts (e.g. payment confirmation)."
-        ),
+        Boolean, nullable=False, server_default=text("false"), default=False
     )
 
     # ── Event toggles (per-event switches) ────────────────────────────────────
     notify_new_message: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="New message received in a conversation.",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
     notify_booking_update: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="Booking confirmed, rejected, or completed.",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
     notify_listing_approved: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="Property listing approved or rejected by admin.",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
     notify_saved_search: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="New property matches a saved search alert.",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
     notify_listing_expiry: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="Listing is about to expire (7-day warning).",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
     notify_subscription: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("true"),
-        default=True,
-        comment="Subscription expiring soon (3-day warning) or expired.",
+        Boolean, nullable=False, server_default=text("true"), default=True
     )
 
     # ── Marketing toggles (opt-in, NDPR compliance) ──────────────────────────
     marketing_email: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("false"),
-        default=False,
-        comment="Marketing emails. Default False (opt-in). NDPR compliance.",
+        Boolean, nullable=False, server_default=text("false"), default=False
     )
     marketing_sms: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
-        server_default=text("false"),
-        default=False,
-        comment="Marketing SMS. Default False (opt-in). NDPR compliance.",
+        Boolean, nullable=False, server_default=text("false"), default=False
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────
@@ -341,11 +324,41 @@ class UserNotificationSettings(Base, UUIDMixin, TimestampMixin):
         back_populates="notification_settings",
     )
 
-    # ── Computed properties: display-only ─────────────────────────────────────
+    # ── Query methods ─────────────────────────────────────────────────────────
+
+    def wants_notification(self, event_type: str) -> bool:
+        """
+        Whether this user wants to receive a given event type.
+        Called by NotificationService.create() before inserting.
+
+        Fail-open: unmapped event types are always delivered.
+        """
+        if event_type not in NOTIFY_TYPE_MAP:
+            return True
+
+        flag_column = NOTIFY_TYPE_MAP[event_type]
+        if flag_column is None:
+            return True  # Mandatory notification
+
+        return getattr(self, flag_column, True)
+
+    def channel_enabled(self, channel: str) -> bool:
+        """
+        Whether a specific delivery channel is enabled.
+        Called by Celery tasks before dispatching email/SMS/push.
+        """
+        mapping = {
+            "email": self.email_enabled,
+            "push": self.push_enabled,
+            "sms": self.sms_enabled,
+        }
+        return mapping.get(channel, False)
+
+    # ── Display properties ────────────────────────────────────────────────────
 
     @property
     def active_channels(self) -> list[str]:
-        """Returns list of enabled channel names. Used by notification_service."""
+        """Returns list of enabled channel names."""
         channels = []
         if self.email_enabled:
             channels.append("email")
