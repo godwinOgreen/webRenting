@@ -1,217 +1,255 @@
-<!-- ========================================================= -->
-
-<!--                     webRenting README                      -->
-
-<!--                     Part 1 - Hero                          -->
-
-<!-- ========================================================= -->
-
 <div align="center">
 
-# 🏡 webRenting
+# 0xRenting
 
-### **A Production-Ready Real Estate Rental Platform Built with FastAPI & Google Cloud**
+### **Engineering Rental Platforms the Right Way.**
 
-<p>
+#### *An open-source reference implementation for building modern property rental platforms using production-ready backend architecture and cloud-native engineering principles.*
 
-*Inspired by Zillow, Zoopla and ImmoScout24*
+> **Repository:** `webRenting`
+> **Project Name:** **0xRenting**
 
+---
+
+> 🚧 **Status:** Active Development
+
+---
+
+<!-- Replace this with the official banner later -->
+
+<p align="center">
+<img src="assets/banner/github-banner.svg" alt="0xRenting Banner" width="100%">
 </p>
 
-<br>
-
 ![Python](https://img.shields.io/badge/Python-3.13-blue?style=for-the-badge\&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.116+-009688?style=for-the-badge\&logo=fastapi)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?style=for-the-badge\&logo=postgresql)
+![FastAPI](https://img.shields.io/badge/FastAPI-Modern_API-009688?style=for-the-badge\&logo=fastapi)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?style=for-the-badge\&logo=postgresql)
 ![Redis](https://img.shields.io/badge/Redis-Cache-DC382D?style=for-the-badge\&logo=redis)
+
 ![Docker](https://img.shields.io/badge/Docker-Containers-2496ED?style=for-the-badge\&logo=docker)
-
-<br>
-
-![Google Cloud](https://img.shields.io/badge/Google_Cloud-Cloud_Native-4285F4?style=for-the-badge\&logo=googlecloud)
+![Google%20Cloud](https://img.shields.io/badge/Google_Cloud-Cloud_Native-4285F4?style=for-the-badge\&logo=googlecloud)
 ![NGINX](https://img.shields.io/badge/NGINX-Reverse_Proxy-009639?style=for-the-badge\&logo=nginx)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-red?style=for-the-badge)
-![Alembic](https://img.shields.io/badge/Alembic-Migrations-darkgreen?style=for-the-badge)
-![JWT](https://img.shields.io/badge/JWT-Authentication-black?style=for-the-badge\&logo=jsonwebtokens)
-
-<br>
-
-![GitHub stars](https://img.shields.io/github/stars/godwinOgreen/webRenting?style=flat-square)
-![GitHub forks](https://img.shields.io/github/forks/godwinOgreen/webRenting?style=flat-square)
-![GitHub issues](https://img.shields.io/github/issues/godwinOgreen/webRenting?style=flat-square)
-![GitHub last commit](https://img.shields.io/github/last-commit/godwinOgreen/webRenting?style=flat-square)
 
 </div>
 
 ---
 
-# 🌍 Overview
+# Welcome
 
-**webRenting** is a modern, cloud-native, enterprise-grade rental platform designed to simplify the process of listing, discovering, booking and managing rental properties.
+Most tutorials teach you **how to build features**.
 
-Rather than being a simple CRUD application, webRenting has been architected as a scalable backend platform capable of supporting thousands of concurrent users while maintaining clean architecture, security, performance and maintainability.
+Very few teach you **how to engineer systems**.
 
-The project takes inspiration from internationally recognised real estate platforms including:
+0xRenting is an open-source backend platform that demonstrates how production-grade rental marketplaces can be designed, documented, implemented and deployed using modern software engineering principles.
 
-* 🏠 Zillow
-* 🏢 Zoopla
-* 🏙 ImmoScout24
-* 🏘 Realtor.com
+Rather than focusing exclusively on CRUD operations, the project documents the complete engineering journey behind building a scalable property rental platform—from business domain modelling and database design to cloud infrastructure, deployment strategy and operational thinking.
 
-while being designed specifically as a backend-first system suitable for deployment on **Google Cloud Platform (GCP)**.
+The goal is simple:
 
----
-
-# 🎯 Vision
-
-The goal of this project is not simply to build another property listing website.
-
-The objective is to design a backend that reflects how large-scale production systems are engineered.
-
-This repository demonstrates:
-
-* scalable API design
-* cloud-native deployment
-* secure authentication
-* clean architecture
-* domain-driven modelling
-* production-ready database design
-* maintainable code organisation
-* modern DevOps practices
-
-Every architectural decision has been made with scalability, maintainability and developer experience in mind.
+> **Teach developers how experienced engineering teams build rental platforms that can evolve, scale and be maintained over time.**
 
 ---
 
-# ✨ What Makes webRenting Different?
+# Why 0xRenting?
 
-Unlike many portfolio projects that stop at property listings, webRenting models the complete rental lifecycle.
+Modern rental platforms are significantly more complex than displaying property listings.
 
-It includes features commonly found in enterprise systems such as:
+They require identity management, role-based permissions, booking workflows, messaging, subscriptions, payments, moderation, notifications, analytics and operational tooling—all working together within a maintainable architecture.
 
-* Secure authentication
-* OAuth support
-* Role-based permissions
-* Property approval workflow
-* KYC verification
-* Subscription billing
-* Messaging system
-* Booking management
-* Smart notifications
-* Property analytics
-* Audit logging
-* Agent profiles
-* Saved searches
-* Media optimisation
-* Review system
-* Admin moderation
+Many educational projects demonstrate these features individually.
 
-The result is a backend that closely resembles the complexity of real-world commercial applications.
+Few explain how they fit together as a cohesive system.
+
+0xRenting exists to bridge that gap.
+
+The repository combines implementation with architecture, documentation and engineering decisions so contributors understand not only **what** was built, but also **why** it was built that way.
 
 ---
 
-# 🏗 Project Goals
+# What Makes This Project Different?
 
-The project was designed around five engineering principles.
+This repository treats documentation as a first-class engineering deliverable.
 
-## 1. Scalability
+Alongside the source code, you'll find artefacts that are commonly produced during the design of production software, including:
 
-Every module should be capable of growing without requiring large architectural changes.
+* 🏛 System Architecture
+* 🗄 Entity Relationship Diagrams (ERDs)
+* 📘 Database Handbook
+* 👥 User Journey Documentation
+* 🔄 State Machines
+* 🔐 Role & Permission Matrix
+* ⚙ Automation & Event Flows
+* ☁ Cloud Deployment Strategy
+* 📚 Engineering Decision Records
 
----
-
-## 2. Security
-
-Authentication, authorisation and user verification should be treated as first-class features rather than afterthoughts.
-
----
-
-## 3. Maintainability
-
-The codebase should remain easy to understand even as additional features are introduced.
+The objective is to provide a complete reference implementation rather than a collection of isolated examples.
 
 ---
 
-## 4. Performance
+# Current Status
 
-Database design, caching and asynchronous processing should minimise response times while supporting future scaling.
+0xRenting is under active development.
 
----
+The platform already includes a stable backend foundation together with several core business domains.
 
-## 5. Developer Experience
+## Core Infrastructure
 
-Developers should be able to understand, configure and contribute to the project with minimal friction.
+* ✅ FastAPI application bootstrap
+* ✅ Global exception handling
+* ✅ Configuration management
+* ✅ SQLAlchemy integration
+* ✅ Redis integration
+* ✅ Shared response schemas
+* ✅ API versioning
+* ✅ Role-based permission guards
 
----
+## Implemented Domains
 
-# 🚀 Core Features
+* ✅ Identity & Authentication
+* ✅ User Management
+* ✅ Property Marketplace
+* ✅ Booking Engine
+* ✅ Payments
+* ✅ Subscriptions
+* ✅ Messaging
 
-### ✅ Implemented
-| Category | Highlights |
-|---|---|
-| 👤 Authentication | JWT, OAuth, RBAC, Password Reset |
-| 🏡 Property Listings | CRUD, Approval Workflow |
-| 📅 Bookings | Viewing Requests, Scheduling |
-| 💳 Payments | Paystack Integration, Subscription Billing |
-| 💬 Messaging | Conversation Threads, Unread Tracking |
+## Planned Domains
 
-### 🔨 In Progress / Planned
-| Category | Highlights |
-|---|---|
-| 🔔 Notifications | Deep-linked Notification System |
-| 🔍 Search | Filters, Saved Searches |
-| 🔐 Security | KYC Verification, Audit Logs |
-| ⭐ Reviews | Property & Agent Reviews |
-| 📈 Analytics | Property Views & Engagement |
-| 📸 Media | Image Optimisation, Virtual Tours |
----
-
-# 🧠 Designed for Production
-
-The backend has been designed with production deployment in mind.
-
-It incorporates concepts such as:
-
-* layered architecture
-* dependency injection
-* service-oriented design
-* repository pattern
-* asynchronous request handling
-* database migrations
-* API versioning
-* caching
-* cloud deployment
-* observability
-* structured logging
-* future microservice compatibility
+* 🟡 KYC Verification
+* 🟡 Notifications
+* 🟡 Reviews
+* 🟡 Search
+* 🟡 Saved Searches
+* 🟡 Analytics
+* 🟡 Administration
+* 🟡 Media Management
+* 🟡 Reports
+* 🟡 Consent Management
 
 ---
 
-# 📖 Table of Contents
+# Technology Stack
 
-* Overview
-* Vision
-* Features
-* Technology Stack
-* System Architecture
-* Database Design
-* Folder Structure
-* Installation
-* Configuration
-* Running Locally
-* Docker Deployment
-* Google Cloud Deployment
-* API Documentation
-* Authentication
-* Security
-* Testing
-* Performance
-* Future Roadmap
-* Contributing
-* License
+| Layer            | Technologies           |
+| ---------------- | ---------------------- |
+| Backend          | FastAPI, Python        |
+| Database         | PostgreSQL, SQLAlchemy |
+| Cache            | Redis                  |
+| Authentication   | JWT, OAuth             |
+| Payments         | Paystack               |
+| Reverse Proxy    | NGINX                  |
+| Containerisation | Docker                 |
+| Cloud            | Google Cloud Platform  |
+| API              | RESTful APIs           |
+| Version Control  | Git & GitHub           |
 
 ---
 
-> **"Good software is not measured by the number of features it contains, but by how well those features can evolve over time."**
+# Documentation
 
-**webRenting** has been designed with that philosophy in mind.
+The repository documentation is organised as an engineering handbook.
+
+| Document                           | Description                                    |
+| ---------------------------------- | ---------------------------------------------- |
+| `docs/00-project-standards.md`     | Engineering standards and project philosophy   |
+| `docs/01-getting-started.md`       | Introduction to the project                    |
+| `docs/02-architecture.md`          | High-level architecture and design principles  |
+| `docs/03-business-domains.md`      | Business capabilities and domain boundaries    |
+| `docs/04-database-handbook.md`     | Database design and modelling                  |
+| `docs/05-api-design.md`            | API conventions and design standards           |
+| `docs/06-security.md`              | Authentication, authorisation and security     |
+| `docs/07-deployment.md`            | Local, Docker and cloud deployment             |
+| `docs/08-infrastructure.md`        | Infrastructure components and operations       |
+| `docs/09-observability.md`         | Monitoring, logging and operational visibility |
+| `docs/10-engineering-decisions.md` | Architectural Decision Records (ADRs)          |
+| `docs/11-roadmap.md`               | Planned milestones and future development      |
+| `docs/12-contributing.md`          | Contribution guidelines                        |
+
+---
+
+# Quick Start
+
+```bash
+git clone https://github.com/godwinOgreen/webRenting.git
+
+cd webRenting
+```
+
+Further setup instructions are available in the Getting Started guide.
+
+---
+
+# Repository Structure
+
+```text
+webRenting/
+
+├── README.md
+├── docs/
+├── assets/
+├── app/
+├── tests/
+├── alembic/
+├── docker/
+├── nginx/
+├── scripts/
+└── ...
+```
+
+---
+
+# Project Roadmap
+
+The project is being developed incrementally.
+
+The current roadmap focuses on completing the remaining business domains before expanding into advanced marketplace capabilities.
+
+Upcoming milestones include:
+
+* Notification Engine
+* KYC Verification
+* Reviews
+* Search Platform
+* Saved Searches
+* Analytics
+* Administration
+* Media Management
+* Reporting
+* Production Deployment
+
+A detailed roadmap is maintained in:
+
+```text
+docs/11-roadmap.md
+```
+
+---
+
+# Contributing
+
+Contributions are welcome.
+
+Before contributing, please read:
+
+* Project Standards
+* Architecture Guide
+* Contribution Guide
+
+Following the documented engineering standards helps keep the project consistent and maintainable.
+
+---
+
+# License
+
+This project will be released under the MIT License.
+
+---
+
+<div align="center">
+
+### Engineering Rental Platforms the Right Way.
+
+**Design • Engineer • Deploy • Scale**
+
+</div>
