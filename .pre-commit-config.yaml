@@ -1,0 +1,47 @@
+# .pre-commit-config.yaml
+
+exclude: |
+  (?x)^(
+      .venv/|
+      .git/|
+      __pycache__/|
+      .pytest_cache/|
+      .mypy_cache/|
+      .ruff_cache/|
+      alembic/versions/|
+      node_modules/
+  )
+
+repos:
+  # ── General file hygiene ──────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-ast
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # ── Ruff: lint + format ───────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.0
+    hooks:
+      # Lint (runs first, catches errors)
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+
+      # Format (runs second, formats code)
+      - id: ruff-format
+
+  # ── Detect secrets ────────────────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
