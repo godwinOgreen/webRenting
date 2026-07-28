@@ -49,19 +49,25 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    CheckConstraint, DateTime, ForeignKey, String, Text, text, func,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin
+from app.db.mixins import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.payments.models import Payment
@@ -70,6 +76,7 @@ if TYPE_CHECKING:
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
+
 class SubscriptionPlan(str, enum.Enum):
     """
     The two subscription tiers on the platform.
@@ -77,6 +84,7 @@ class SubscriptionPlan(str, enum.Enum):
     RENTER: ₦1,000/month — unlocks search, messaging, booking, saved search alerts
     AGENT:  ₦10,000/month — unlocks listing creation, receiving leads, analytics
     """
+
     RENTER = "renter"
     AGENT = "agent"
 
@@ -92,6 +100,7 @@ class SubscriptionStatus(str, enum.Enum):
     Important: A CANCELLED subscription may still grant access if expires_at
     is in the future. Check is_active property, not just status.
     """
+
     ACTIVE = "active"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
@@ -113,6 +122,7 @@ _subscription_status_col = sa.Enum(
 
 
 # ─── Model ───────────────────────────────────────────────────────────────────
+
 
 class Subscription(Base, UUIDMixin, TimestampMixin):
     """
@@ -139,7 +149,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    payment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("payments.id", ondelete="SET NULL"),
         nullable=True,
@@ -152,11 +162,13 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
 
     # ── Plan & status ─────────────────────────────────────────────────────────
     plan_type: Mapped[SubscriptionPlan] = mapped_column(
-        _subscription_plan_col, nullable=False,
+        _subscription_plan_col,
+        nullable=False,
         comment="renter (₦1,000/mo) or agent (₦10,000/mo).",
     )
     status: Mapped[SubscriptionStatus] = mapped_column(
-        _subscription_status_col, nullable=False,
+        _subscription_status_col,
+        nullable=False,
         server_default=text("'active'"),
         default=SubscriptionStatus.ACTIVE,
         index=True,
@@ -169,11 +181,13 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
 
     # ── Time bounds ───────────────────────────────────────────────────────────
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         comment="When this subscription period began (= payment confirmed at).",
     )
     expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         index=True,
         comment=(
             "When this period ends (= started_at + 30 days). "
@@ -182,17 +196,20 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
     )
 
     # ── Cancellation ─────────────────────────────────────────────────────────
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         comment="Set when user cancels. Access continues until expires_at.",
     )
-    cancellation_reason: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True,
+    cancellation_reason: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
     )
 
     # ── Free subscription reason ──────────────────────────────────────────────
-    free_reason: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+    free_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
         comment=(
             "Required when payment_id IS NULL. "
             "Explains why this subscription was granted without payment. "
@@ -218,7 +235,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         "User",
         back_populates="subscriptions",
     )
-    payment: Mapped[Optional[Payment]] = relationship(
+    payment: Mapped[Payment | None] = relationship(
         "Payment",
         back_populates="subscriptions",
     )
@@ -231,7 +248,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         Definitive access check.
         A CANCELLED subscription remains active until expires_at.
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         return (
             self.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELLED)
             and self.expires_at > now
@@ -248,7 +265,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
     @hybrid_property
     def is_expired(self) -> bool:
         """True if expires_at has passed, regardless of status field."""
-        return datetime.now(tz=timezone.utc) > self.expires_at
+        return datetime.now(tz=UTC) > self.expires_at
 
     @is_expired.expression
     def is_expired(cls):
@@ -272,7 +289,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         Returns 0 if already expired (never negative).
         Used by Celery to decide when to send renewal warnings.
         """
-        delta = self.expires_at - datetime.now(tz=timezone.utc)
+        delta = self.expires_at - datetime.now(tz=UTC)
         return max(0, int(delta.total_seconds() // 86400))
 
     @property
@@ -282,6 +299,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         Celery subscription_check uses this to send renewal reminder notifications.
         """
         from app.constants import SUBSCRIPTION_WARNING_DAYS
+
         return self.is_active and self.days_until_expiry <= SUBSCRIPTION_WARNING_DAYS
 
     @property
@@ -292,7 +310,8 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         Renter: ₦1,000 = 100,000 kobo
         Agent:  ₦10,000 = 1,000,000 kobo
         """
-        from app.constants import RENTER_PLAN_PRICE_KOBO, AGENT_PLAN_PRICE_KOBO
+        from app.constants import AGENT_PLAN_PRICE_KOBO, RENTER_PLAN_PRICE_KOBO
+
         return (
             RENTER_PLAN_PRICE_KOBO
             if self.plan_type == SubscriptionPlan.RENTER
@@ -312,7 +331,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
         payment: Payment,
         plan_type: SubscriptionPlan,
         duration_days: int = 30,
-        current_active_sub: Optional[Subscription] = None,
+        current_active_sub: Subscription | None = None,
     ) -> Subscription:
         """
         Factory method — creates a Subscription from a confirmed Payment.
@@ -330,7 +349,7 @@ class Subscription(Base, UUIDMixin, TimestampMixin):
                 free_reason="Admin promotional grant",
             )
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
 
         if current_active_sub and current_active_sub.expires_at > now:
             started_at = current_active_sub.expires_at

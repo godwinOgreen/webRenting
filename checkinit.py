@@ -8,11 +8,11 @@ if os.path.exists(versions_dir):
     files = [f for f in os.listdir(versions_dir) if f.endswith(".py") and "init" in f.lower()]
     if files:
         path = os.path.join(versions_dir, files[0])
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         print("─" * 40)
-        print(f"📊 SCHEMA STRUCTURAL ANALYSIS")
+        print("📊 SCHEMA STRUCTURAL ANALYSIS")
         print("─" * 40)
         print(f"📁 Target File   : {path}")
         print(f"🏭 Tables Created: {content.count('op.create_table')}")

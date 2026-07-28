@@ -9,11 +9,11 @@ here. This service assumes the caller is already authorized to message;
 it only handles conversation/message creation and the "find existing
 or create new" logic.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,7 +138,7 @@ class MessagingService:
         self,
         conversation_id: uuid.UUID,
         user: User,
-        cursor: Optional[str],
+        cursor: str | None,
         limit: int = 50,
     ) -> CursorPage[MessageRead]:
         """
@@ -161,9 +161,7 @@ class MessagingService:
         await self.repo.mark_read(participant)
 
         items = [MessageRead.model_validate(m) for m in messages]
-        next_cursor = (
-            messages[-1].created_at.isoformat() if len(messages) == limit else None
-        )
+        next_cursor = messages[-1].created_at.isoformat() if len(messages) == limit else None
         return CursorPage.of(items, next_cursor)
 
     # ── Send message ──────────────────────────────────────────────────────────

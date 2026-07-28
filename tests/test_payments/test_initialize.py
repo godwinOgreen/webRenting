@@ -3,6 +3,7 @@ tests/domains/payments/test_router.py
 
 Integration tests for Payments domain HTTP endpoints and Paystack Webhook processing.
 """
+
 import hashlib
 import hmac
 import uuid
@@ -23,6 +24,7 @@ pytestmark = pytest.mark.asyncio
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def generate_paystack_signature(raw_body: bytes, secret: str) -> str:
     """Generate a valid HMAC-SHA512 signature for testing."""
     return hmac.new(
@@ -41,7 +43,7 @@ def _make_webhook_payload(reference: str, amount: int) -> bytes:
             "status": "success",
             "amount": {amount}
         }}
-    }}""".encode("utf-8")
+    }}""".encode()
 
 
 def _webhook_headers(raw_payload: bytes) -> dict:
@@ -73,12 +75,14 @@ async def _create_pending_payment(
 
 # ── Initialization Tests ──────────────────────────────────────────────────────
 
+
 async def test_initialize_payment_success(
     client: AsyncClient,
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Initializing a payment returns authorization URL and reference."""
+
     async def mock_initialize_transaction(email: str, amount_kobo: int, reference: str):
         return {
             "authorization_url": "https://checkout.paystack.com/mock-code",
@@ -121,6 +125,7 @@ async def test_initialize_payment_invalid_plan(
 
 
 # ── Read Endpoints Tests ──────────────────────────────────────────────────────
+
 
 async def test_list_mine_payments(
     client: AsyncClient,
@@ -190,6 +195,7 @@ async def test_get_payment_other_user_forbidden(
 
 # ── Webhook Security & Idempotency Tests ──────────────────────────────────────
 
+
 async def test_webhook_invalid_signature_fails(client: AsyncClient):
     """Webhooks without a valid HMAC signature return 401."""
     raw_payload = b'{"event": "charge.success", "data": {}}'
@@ -243,9 +249,9 @@ async def test_webhook_charge_success_activates_subscription(
     assert payment.paid_at is not None
 
     # Verify subscription created
-    sub = (await db.execute(
-        select(Subscription).where(Subscription.user_id == test_user.id)
-    )).scalar_one_or_none()
+    sub = (
+        await db.execute(select(Subscription).where(Subscription.user_id == test_user.id))
+    ).scalar_one_or_none()
     assert sub is not None
     assert sub.plan == "renter"
 
@@ -278,9 +284,11 @@ async def test_webhook_replay_attack_is_idempotent(
     assert res2.status_code == 200
 
     # Exactly one subscription
-    subs = (await db.execute(
-        select(Subscription).where(Subscription.user_id == test_user.id)
-    )).scalars().all()
+    subs = (
+        (await db.execute(select(Subscription).where(Subscription.user_id == test_user.id)))
+        .scalars()
+        .all()
+    )
     assert len(subs) == 1
 
 
@@ -309,9 +317,9 @@ async def test_webhook_amount_mismatch_fails_payment(
     assert payment.status == PaymentStatus.FAILED
 
     # No subscription
-    sub = (await db.execute(
-        select(Subscription).where(Subscription.user_id == test_user.id)
-    )).scalar_one_or_none()
+    sub = (
+        await db.execute(select(Subscription).where(Subscription.user_id == test_user.id))
+    ).scalar_one_or_none()
     assert sub is None
 
 
@@ -345,7 +353,7 @@ async def test_webhook_non_charge_event_ignored(
             "status": "success",
             "amount": {payment.amount}
         }}
-    }}""".encode("utf-8")
+    }}""".encode()
 
     headers = _webhook_headers(raw_payload)
 

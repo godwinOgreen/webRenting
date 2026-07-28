@@ -7,17 +7,17 @@ No create() — subscriptions are created by payments/service.py via
 Subscription.create_from_payment() after a successful Paystack charge.
 This service only reads and cancels.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
 
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
-from app.domains.subscriptions.models import Subscription, SubscriptionStatus
+from app.domains.subscriptions.models import SubscriptionStatus
 from app.domains.subscriptions.repository import SubscriptionRepository
 from app.domains.subscriptions.schemas import SubscriptionRead
 from app.domains.users.models import User
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class SubscriptionService:
-    def __init__(self, db: AsyncSession, redis: Optional[Redis] = None) -> None:
+    def __init__(self, db: AsyncSession, redis: Redis | None = None) -> None:
         self.db = db
         self.redis = redis
         self.repo = SubscriptionRepository(db)
@@ -61,7 +61,7 @@ class SubscriptionService:
         self,
         subscription_id: uuid.UUID,
         user: User,
-        reason: Optional[str],
+        reason: str | None,
     ) -> SubscriptionRead:
         """
         Cancel a subscription. Access continues until expires_at —
@@ -87,10 +87,9 @@ class SubscriptionService:
         # Invalidate cached subscription status in Redis
         if self.redis:
             from app.core.redis_client import RedisKeys
+
             try:
-                await self.redis.delete(
-                    RedisKeys.active_subscription(str(user.id))
-                )
+                await self.redis.delete(RedisKeys.active_subscription(str(user.id)))
             except Exception as e:
                 logger.warning(
                     "Failed to clear Redis subscription cache",

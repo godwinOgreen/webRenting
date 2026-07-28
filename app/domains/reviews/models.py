@@ -52,19 +52,22 @@ Average rating calculation (in review_service):
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-import sqlalchemy as sa
 from sqlalchemy import (
-    CheckConstraint, ForeignKey, Integer, Text, UniqueConstraint,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.constants import MAX_RATING, MIN_RATING
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, CreatedAtMixin
-from app.constants import MIN_RATING, MAX_RATING
+from app.db.mixins import CreatedAtMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.bookings.models import Booking
@@ -73,6 +76,7 @@ if TYPE_CHECKING:
 
 
 # ─── Review Model ────────────────────────────────────────────────────────────
+
 
 class Review(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -138,15 +142,17 @@ class Review(Base, UUIDMixin, CreatedAtMixin):
 
     # ── Review content ────────────────────────────────────────────────────────
     rating: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
         comment=(
             f"Star rating from {MIN_RATING} to {MAX_RATING}. "
             "Integer only — no half-stars. "
             "Enforced by chk_review_rating CHECK constraint."
         ),
     )
-    body: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+    body: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
         comment="Written review text. Optional — user may submit rating only.",
     )
 
@@ -213,6 +219,7 @@ class Review(Base, UUIDMixin, CreatedAtMixin):
 
 
 # ─── AgentReview Model ───────────────────────────────────────────────────────
+
 
 class AgentReview(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -293,15 +300,17 @@ class AgentReview(Base, UUIDMixin, CreatedAtMixin):
 
     # ── Review content ────────────────────────────────────────────────────────
     rating: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
         comment=(
             f"Star rating from {MIN_RATING} to {MAX_RATING}. "
             "Integer only — no half-stars. "
             "Enforced by chk_agent_review_rating CHECK constraint."
         ),
     )
-    body: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+    body: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
         comment="Written review text. Optional — user may submit rating only.",
     )
 

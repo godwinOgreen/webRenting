@@ -7,13 +7,13 @@ No FK between Booking and AgentAvailability (see models.py docstring)
 — this repository is where the two are coordinated: find an open slot,
 create the booking, flip is_booked, all within one flush.
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.bookings.models import AgentAvailability, Booking, BookingStatus
@@ -26,29 +26,21 @@ class BookingRepository:
 
     # ── Availability reads ───────────────────────────────────────────────────
 
-    async def get_slot_by_id(
-        self, slot_id: uuid.UUID
-    ) -> Optional[AgentAvailability]:
+    async def get_slot_by_id(self, slot_id: uuid.UUID) -> AgentAvailability | None:
         """Fetch a single availability slot by ID."""
         return await self.db.get(AgentAvailability, slot_id)
 
-    async def get_slot_by_id_for_update(
-        self, slot_id: uuid.UUID
-    ) -> Optional[AgentAvailability]:
+    async def get_slot_by_id_for_update(self, slot_id: uuid.UUID) -> AgentAvailability | None:
         """
         Fetch a slot with an exclusive row-level lock (SELECT FOR UPDATE).
         Used during booking creation to prevent double-booking race conditions.
         """
         result = await self.db.execute(
-            select(AgentAvailability)
-            .where(AgentAvailability.id == slot_id)
-            .with_for_update()
+            select(AgentAvailability).where(AgentAvailability.id == slot_id).with_for_update()
         )
         return result.scalar_one_or_none()
 
-    async def list_open_slots(
-        self, property_id: uuid.UUID
-    ) -> list[AgentAvailability]:
+    async def list_open_slots(self, property_id: uuid.UUID) -> list[AgentAvailability]:
         """Open, future slots for a property — what a renter can book."""
         result = await self.db.execute(
             select(AgentAvailability)
@@ -62,7 +54,7 @@ class BookingRepository:
         return list(result.scalars().all())
 
     async def list_agent_slots(
-        self, agent_id: uuid.UUID, property_id: Optional[uuid.UUID] = None
+        self, agent_id: uuid.UUID, property_id: uuid.UUID | None = None
     ) -> list[AgentAvailability]:
         """All slots an agent created, for their calendar management view."""
         q = select(AgentAvailability).where(AgentAvailability.agent_id == agent_id)
@@ -92,9 +84,7 @@ class BookingRepository:
         await self.db.delete(slot)
         await self.db.flush()
 
-    async def set_slot_booked(
-        self, slot: AgentAvailability, booked: bool
-    ) -> AgentAvailability:
+    async def set_slot_booked(self, slot: AgentAvailability, booked: bool) -> AgentAvailability:
         """Set slot as booked or available."""
         slot.is_booked = booked
         await self.db.flush()
@@ -102,29 +92,26 @@ class BookingRepository:
 
     # ── Booking reads ─────────────────────────────────────────────────────────
 
-    async def get_by_id(self, booking_id: uuid.UUID) -> Optional[Booking]:
+    async def get_by_id(self, booking_id: uuid.UUID) -> Booking | None:
         """Fetch a single booking by ID."""
         return await self.db.get(Booking, booking_id)
 
-    async def get_by_id_and_user(
-        self, booking_id: uuid.UUID, user_id: uuid.UUID
-    ) -> Optional[Booking]:
+    async def get_by_id_and_user(self, booking_id: uuid.UUID, user_id: uuid.UUID) -> Booking | None:
         """Fetch a booking only if it belongs to the given user."""
         result = await self.db.execute(
-            select(Booking).where(
-                Booking.id == booking_id, Booking.user_id == user_id
-            )
+            select(Booking).where(Booking.id == booking_id, Booking.user_id == user_id)
         )
         return result.scalar_one_or_none()
 
     async def get_by_id_for_agent(
         self, booking_id: uuid.UUID, agent_id: uuid.UUID
-    ) -> Optional[Booking]:
+    ) -> Booking | None:
         """
         Fetch a booking only if the requesting agent owns the property
         it's for. Joins through Property to check ownership.
         """
         from app.domains.properties.models import Property
+
         result = await self.db.execute(
             select(Booking)
             .join(Property, Booking.property_id == Property.id)
@@ -140,9 +127,7 @@ class BookingRepository:
 
         count_q = select(func.count()).select_from(base.subquery())
         data_q = (
-            base.order_by(Booking.visit_time.desc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
+            base.order_by(Booking.visit_time.desc()).offset((page - 1) * per_page).limit(per_page)
         )
 
         count_res = await self.db.execute(count_q)
@@ -155,6 +140,7 @@ class BookingRepository:
     ) -> tuple[list[Booking], int]:
         """Paginated bookings for all properties owned by an agent."""
         from app.domains.properties.models import Property
+
         base = (
             select(Booking)
             .join(Property, Booking.property_id == Property.id)
@@ -163,9 +149,7 @@ class BookingRepository:
 
         count_q = select(func.count()).select_from(base.subquery())
         data_q = (
-            base.order_by(Booking.visit_time.desc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
+            base.order_by(Booking.visit_time.desc()).offset((page - 1) * per_page).limit(per_page)
         )
 
         count_res = await self.db.execute(count_q)
@@ -211,7 +195,7 @@ class BookingRepository:
         booking: Booking,
         status: BookingStatus,
         *,
-        rejection_reason: Optional[str] = None,
+        rejection_reason: str | None = None,
     ) -> Booking:
         """Update booking status and optional rejection reason."""
         booking.status = status

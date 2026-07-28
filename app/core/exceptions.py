@@ -56,9 +56,10 @@ subclasses of anything here — that module is deliberately framework-
 agnostic (see its docstring). core/dependencies.py is responsible for
 catching those two and re-raising as UnauthorizedException.
 """
+
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 class BaseAppException(Exception):
@@ -82,11 +83,11 @@ class BaseAppException(Exception):
 
     def __init__(
         self,
-        message: Optional[str] = None,
+        message: str | None = None,
         *,
-        errors: Optional[dict[str, list[str]]] = None,
-        error_code: Optional[str] = None,
-        log_context: Optional[dict[str, Any]] = None,
+        errors: dict[str, list[str]] | None = None,
+        error_code: str | None = None,
+        log_context: dict[str, Any] | None = None,
     ) -> None:
         self.message = message or self.default_message
         self.errors = errors or {}
@@ -124,6 +125,7 @@ class BaseAppException(Exception):
 
 # ── 400 ─────────────────────────────────────────────────────────────────────
 
+
 class ValidationException(BaseAppException):
     """
     Request data failed validation beyond what Pydantic schema-level
@@ -141,12 +143,14 @@ class ValidationException(BaseAppException):
             errors={"price": ["Must be greater than 0"]},
         )
     """
+
     status_code = 400
     default_message = "Validation failed"
     default_error_code = "validation_error"
 
 
 # ── 401 ─────────────────────────────────────────────────────────────────────
+
 
 class UnauthorizedException(BaseAppException):
     """
@@ -160,12 +164,14 @@ class UnauthorizedException(BaseAppException):
       - core.security.decode_token() raises TokenExpiredError
       - core.security.decode_token() raises InvalidTokenError
     """
+
     status_code = 401
     default_message = "Authentication required"
     default_error_code = "unauthorized"
 
 
 # ── 402 ─────────────────────────────────────────────────────────────────────
+
 
 class PaymentException(BaseAppException):
     """
@@ -178,12 +184,14 @@ class PaymentException(BaseAppException):
     case means "you've never paid"; PaymentException means "a payment
     attempt just failed."
     """
+
     status_code = 402
     default_message = "Payment failed"
     default_error_code = "payment_failed"
 
 
 # ── 403 ─────────────────────────────────────────────────────────────────────
+
 
 class ForbiddenException(BaseAppException):
     """
@@ -196,6 +204,7 @@ class ForbiddenException(BaseAppException):
       "subscription_required"   — no active subscription (Rule 3)
       "not_resource_owner"      — e.g. editing another agent's listing
     """
+
     status_code = 403
     default_message = "You do not have permission to perform this action"
     default_error_code = "forbidden"
@@ -221,11 +230,13 @@ class KYCException(ForbiddenException):
     for the parent still catches KYC failures too — callers that don't
     care about the distinction lose nothing by only handling the base.
     """
+
     default_message = "KYC verification is required to perform this action"
     default_error_code = "kyc_required"
 
 
 # ── 404 ─────────────────────────────────────────────────────────────────────
+
 
 class NotFoundException(BaseAppException):
     """
@@ -237,12 +248,14 @@ class NotFoundException(BaseAppException):
     raise this rather than returning None and letting a service guess
     at the reason.
     """
+
     status_code = 404
     default_message = "Resource not found"
     default_error_code = "not_found"
 
 
 # ── 409 ─────────────────────────────────────────────────────────────────────
+
 
 class ConflictException(BaseAppException):
     """
@@ -254,6 +267,7 @@ class ConflictException(BaseAppException):
       - Re-submitting a property that's already pending_review
       - Paystack webhook replay on an already-processed paystack_reference
     """
+
     status_code = 409
     default_message = "This action conflicts with the current state"
     default_error_code = "conflict"
@@ -261,12 +275,14 @@ class ConflictException(BaseAppException):
 
 # ── 429 ─────────────────────────────────────────────────────────────────────
 
+
 class RateLimitException(BaseAppException):
     """
     Too many requests (Standard 21 rate limits: login 5/min,
     register 5/min, search 60/min, default 100/min). Raised by
     rate-limiting middleware, not typically by domain services.
     """
+
     status_code = 429
     default_message = "Too many requests — please try again shortly"
     default_error_code = "rate_limited"

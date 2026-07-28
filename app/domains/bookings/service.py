@@ -26,11 +26,11 @@ State machine (bookings/models.py BookingStatus docstring):
   CONFIRMED → COMPLETED  (Celery, after visit_time passes)
   CONFIRMED → CANCELLED  (renter cancels a confirmed booking) → slot freed
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,31 +59,25 @@ class BookingService:
 
     async def _get_property_for_owner(
         self, property_id: uuid.UUID, owner_id: uuid.UUID
-    ) -> Optional[Property]:
+    ) -> Property | None:
         """
         Direct model query — services may query other domains' models
         directly but must not import another domain's repository or
         service class.
         """
         result = await self.db.execute(
-            select(Property).where(
-                Property.id == property_id, Property.owner_id == owner_id
-            )
+            select(Property).where(Property.id == property_id, Property.owner_id == owner_id)
         )
         return result.scalar_one_or_none()
 
     # ── Agent availability ────────────────────────────────────────────────────
 
-    async def create_slot(
-        self, agent: User, data: AvailabilitySlotCreate
-    ) -> AvailabilitySlotRead:
+    async def create_slot(self, agent: User, data: AvailabilitySlotCreate) -> AvailabilitySlotRead:
         """
         Agent opens a new viewing slot for one of their properties.
         Verifies the agent actually owns the property.
         """
-        prop = await self._get_property_for_owner(
-            data.property_id, agent.id
-        )
+        prop = await self._get_property_for_owner(data.property_id, agent.id)
         if prop is None:
             raise NotFoundException(
                 message="Property not found or not owned by you",
@@ -95,9 +89,7 @@ class BookingService:
         )
         return AvailabilitySlotRead.model_validate(slot)
 
-    async def list_open_slots(
-        self, property_id: uuid.UUID
-    ) -> list[AvailabilitySlotRead]:
+    async def list_open_slots(self, property_id: uuid.UUID) -> list[AvailabilitySlotRead]:
         """Public — renters browsing a property see open slots."""
         slots = await self.repo.list_open_slots(property_id)
         return [AvailabilitySlotRead.model_validate(s) for s in slots]
@@ -116,8 +108,7 @@ class BookingService:
             raise NotFoundException(message="Availability slot not found")
         if slot.is_booked:
             raise ConflictException(
-                message="Cannot delete a booked slot. Reject or cancel the "
-                        "booking first.",
+                message="Cannot delete a booked slot. Reject or cancel the booking first.",
                 error_code="slot_is_booked",
             )
         await self.repo.delete_slot(slot)
@@ -182,17 +173,13 @@ class BookingService:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def get_for_renter(
-        self, booking_id: uuid.UUID, renter: User
-    ) -> BookingRead:
+    async def get_for_renter(self, booking_id: uuid.UUID, renter: User) -> BookingRead:
         booking = await self.repo.get_by_id_and_user(booking_id, renter.id)
         if booking is None:
             raise NotFoundException(message="Booking not found")
         return BookingRead.model_validate(booking)
 
-    async def get_for_agent(
-        self, booking_id: uuid.UUID, agent: User
-    ) -> BookingRead:
+    async def get_for_agent(self, booking_id: uuid.UUID, agent: User) -> BookingRead:
         booking = await self.repo.get_by_id_for_agent(booking_id, agent.id)
         if booking is None:
             raise NotFoundException(message="Booking not found")
@@ -228,9 +215,7 @@ class BookingService:
         logger.info("Booking confirmed", extra={"booking_id": str(booking_id)})
         return BookingRead.model_validate(updated)
 
-    async def reject(
-        self, booking_id: uuid.UUID, agent: User, reason: str
-    ) -> BookingRead:
+    async def reject(self, booking_id: uuid.UUID, agent: User, reason: str) -> BookingRead:
         """PENDING → REJECTED. Agent only. Frees the slot."""
         booking = await self.repo.get_by_id_for_agent(booking_id, agent.id)
         if booking is None:

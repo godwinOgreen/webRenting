@@ -56,6 +56,7 @@ KNOWN GOTCHAS — read before running autogenerate
 Steps 3, 4, 5 only apply to the INITIAL migration. Every migration
 after that is a normal model change → autogenerate → review → apply.
 """
+
 import sys
 from pathlib import Path
 
@@ -64,14 +65,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# ── Import all models (side-effect: registers 27 tables with Base.metadata) ──
-from app.db.base_all import Base  # noqa: F401
+from alembic import context
 
 # ── Import settings for database URL ─────────────────────────────────────────
 from app.core.config import settings
+
+# ── Import all models (side-effect: registers 27 tables with Base.metadata) ──
+from app.db.base_all import Base  # noqa: F401
 
 # ── Alembic Config object ────────────────────────────────────────────────────
 config = context.config
@@ -101,12 +103,11 @@ def include_object(object, name, type_, reflected, compare_to):
     Alembic autogenerate filter. Return False to exclude an object
     from the diff entirely (it will never appear in a migration).
     """
-    if type_ == "table" and name in _EXTENSION_OWNED_TABLES:
-        return False
-    return True
+    return not (type_ == "table" and name in _EXTENSION_OWNED_TABLES)
 
 
 # ── Offline mode ─────────────────────────────────────────────────────────────
+
 
 def run_migrations_offline() -> None:
     """
@@ -129,6 +130,7 @@ def run_migrations_offline() -> None:
 
 
 # ── Online mode (sync — no async needed for CLI tool) ────────────────────────
+
 
 def run_migrations_online() -> None:
     """

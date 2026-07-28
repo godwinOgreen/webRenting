@@ -36,11 +36,11 @@ every calling domain:
   of the exception to exactly one method.
 ──────────────────────────────────────────────────────────────────────
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,9 +66,9 @@ class NotificationService:
         user_id: uuid.UUID,
         event_type: str,
         message: str,
-        related_type: Optional[str] = None,
-        related_id: Optional[uuid.UUID] = None,
-    ) -> Optional[Notification]:
+        related_type: str | None = None,
+        related_id: uuid.UUID | None = None,
+    ) -> Notification | None:
         """
         Create a notification for a user, respecting their notification
         settings. Returns None (and creates nothing) if the user has
@@ -134,9 +134,7 @@ class NotificationService:
 
     # ── Mark read ─────────────────────────────────────────────────────────────
 
-    async def mark_read(
-        self, notification_id: uuid.UUID, user: User
-    ) -> NotificationRead:
+    async def mark_read(self, notification_id: uuid.UUID, user: User) -> NotificationRead:
         notification = await self.repo.get_by_id(notification_id)
         if notification is None or notification.user_id != user.id:
             raise NotFoundException(message="Notification not found")

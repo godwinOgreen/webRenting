@@ -25,6 +25,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
+
     pass
 
 
@@ -32,6 +33,7 @@ class Base(DeclarativeBase):
 # Provides uuid_generate_v4() and other UUID functions.
 # gen_random_uuid() (used in our UUIDMixin) is built-in for PostgreSQL 13+
 # but the extension is idempotent and useful to have.
+
 
 @event.listens_for(Base.metadata, "after_create")
 def _create_extensions(target, connection, **kwargs):
@@ -84,6 +86,4 @@ def _create_updated_at_triggers(target, connection, **kwargs):
     """
     for table in target.tables.values():
         if "updated_at" in table.columns:
-            connection.execute(
-                text(_TRIGGER_SQL.format(table_name=table.name))
-            )
+            connection.execute(text(_TRIGGER_SQL.format(table_name=table.name)))

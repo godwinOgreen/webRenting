@@ -4,10 +4,10 @@
 Data access for the notifications domain (the Notification inbox
 model and UserNotificationSettings — both belong to this domain).
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,25 +22,19 @@ class NotificationRepository:
 
     # ── User Settings (Owned by Notifications Domain) ─────────────────────────
 
-    async def get_settings_for_user(
-        self, user_id: uuid.UUID
-    ) -> Optional[UserNotificationSettings]:
+    async def get_settings_for_user(self, user_id: uuid.UUID) -> UserNotificationSettings | None:
         """
         Fetches notification settings for a user.
         Owned by NotificationRepository because UserNotificationSettings
         lives in app/domains/notifications/models.py.
         """
-        stmt = select(UserNotificationSettings).where(
-            UserNotificationSettings.user_id == user_id
-        )
+        stmt = select(UserNotificationSettings).where(UserNotificationSettings.user_id == user_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
     # ── Reads ─────────────────────────────────────────────────────────────────
 
-    async def get_by_id(
-        self, notification_id: uuid.UUID
-    ) -> Optional[Notification]:
+    async def get_by_id(self, notification_id: uuid.UUID) -> Notification | None:
         return await self.db.get(Notification, notification_id)
 
     async def list_for_user(
@@ -72,9 +66,7 @@ class NotificationRepository:
             .where(Notification.user_id == user_id, Notification.is_read.is_(False))
             .limit(MAX_UNREAD_NOTIFICATIONS)
         )
-        result = await self.db.execute(
-            select(func.count()).select_from(capped.subquery())
-        )
+        result = await self.db.execute(select(func.count()).select_from(capped.subquery()))
         return result.scalar_one()
 
     # ── Writes ────────────────────────────────────────────────────────────────
@@ -84,8 +76,8 @@ class NotificationRepository:
         user_id: uuid.UUID,
         type_: str,
         message: str,
-        related_type: Optional[str] = None,
-        related_id: Optional[uuid.UUID] = None,
+        related_type: str | None = None,
+        related_id: uuid.UUID | None = None,
     ) -> Notification:
         notification = Notification(
             user_id=user_id,

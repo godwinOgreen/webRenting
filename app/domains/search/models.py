@@ -48,19 +48,26 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, ForeignKey, Integer,
-    Numeric, String, UniqueConstraint, text,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, CreatedAtMixin
+from app.db.mixins import CreatedAtMixin, UUIDMixin
 from app.domains.properties.models import PropertyType
 
 if TYPE_CHECKING:
@@ -69,6 +76,7 @@ if TYPE_CHECKING:
 
 
 # ─── SearchHistory Model ─────────────────────────────────────────────────────
+
 
 class SearchHistory(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -98,7 +106,7 @@ class SearchHistory(Base, UUIDMixin, CreatedAtMixin):
     __tablename__ = "search_history"
 
     # ── Who searched (nullable for guests) ────────────────────────────────────
-    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -111,8 +119,9 @@ class SearchHistory(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Search criteria ───────────────────────────────────────────────────────
-    location: Mapped[Optional[str]] = mapped_column(
-        String(300), nullable=True,
+    location: Mapped[str | None] = mapped_column(
+        String(300),
+        nullable=True,
         comment=(
             "The location string the user searched for. "
             "e.g. 'Lekki Phase 1', 'Victoria Island', 'Ikoyi'. "
@@ -121,7 +130,7 @@ class SearchHistory(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Property clicked from results (nullable) ─────────────────────────────
-    property_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    property_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("properties.id", ondelete="SET NULL"),
         nullable=True,
@@ -134,7 +143,7 @@ class SearchHistory(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    user: Mapped[Optional[User]] = relationship(
+    user: Mapped[User | None] = relationship(
         "User",
         back_populates="search_history",
     )
@@ -142,14 +151,11 @@ class SearchHistory(Base, UUIDMixin, CreatedAtMixin):
     # ── repr ──────────────────────────────────────────────────────────────────
 
     def __repr__(self) -> str:
-        return (
-            f"<SearchHistory id={self.id} "
-            f"user_id={self.user_id} "
-            f"location={self.location!r}>"
-        )
+        return f"<SearchHistory id={self.id} user_id={self.user_id} location={self.location!r}>"
 
 
 # ─── SavedSearch Model ───────────────────────────────────────────────────────
+
 
 class SavedSearch(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -202,8 +208,9 @@ class SavedSearch(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Optional name ─────────────────────────────────────────────────────────
-    name: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True,
+    name: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
         comment=(
             "User-given name for this saved search. "
             "e.g. 'Lekki 3-bed under 500k', 'VI apartments'. "
@@ -212,23 +219,27 @@ class SavedSearch(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Search criteria (NULL = any) ──────────────────────────────────────────
-    city: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True,
+    city: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
         comment="Filter by city. NULL = any city.",
     )
-    state: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True,
+    state: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
         comment="Filter by state. NULL = any state.",
     )
-    min_price: Mapped[Optional[Decimal]] = mapped_column(
-        Numeric(15, 2), nullable=True,
+    min_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(15, 2),
+        nullable=True,
         comment="Minimum price filter. NULL = no minimum.",
     )
-    max_price: Mapped[Optional[Decimal]] = mapped_column(
-        Numeric(15, 2), nullable=True,
+    max_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(15, 2),
+        nullable=True,
         comment="Maximum price filter. NULL = no maximum.",
     )
-    property_type: Mapped[Optional[PropertyType]] = mapped_column(
+    property_type: Mapped[PropertyType | None] = mapped_column(
         sa.Enum(
             PropertyType,
             name="property_type",
@@ -237,14 +248,16 @@ class SavedSearch(Base, UUIDMixin, CreatedAtMixin):
         nullable=True,
         comment="Filter by property type. NULL = any type.",
     )
-    min_bedrooms: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True,
+    min_bedrooms: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
         comment="Minimum number of bedrooms. NULL = any.",
     )
 
     # ── Alert status ──────────────────────────────────────────────────────────
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         server_default=text("true"),
         default=True,
         index=True,
@@ -254,8 +267,9 @@ class SavedSearch(Base, UUIDMixin, CreatedAtMixin):
             "Indexed: Celery queries WHERE is_active=True."
         ),
     )
-    last_notified_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    last_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         index=True,
         comment=(
             "When the last alert notification was sent. "
@@ -301,16 +315,13 @@ class SavedSearch(Base, UUIDMixin, CreatedAtMixin):
         Combines is_active flag with "has criteria" check.
         A saved search with zero criteria matches everything — not useful for alerts.
         """
-        return (
-            self.is_active
-            and (
-                self.city is not None
-                or self.state is not None
-                or self.min_price is not None
-                or self.max_price is not None
-                or self.property_type is not None
-                or self.min_bedrooms is not None
-            )
+        return self.is_active and (
+            self.city is not None
+            or self.state is not None
+            or self.min_price is not None
+            or self.max_price is not None
+            or self.property_type is not None
+            or self.min_bedrooms is not None
         )
 
     @is_alerting.expression
@@ -389,6 +400,7 @@ class SavedSearch(Base, UUIDMixin, CreatedAtMixin):
 
 # ─── Favorite Model ──────────────────────────────────────────────────────────
 
+
 class Favorite(Base, UUIDMixin, CreatedAtMixin):
     """
     A property bookmarked by a user for later viewing.
@@ -410,9 +422,7 @@ class Favorite(Base, UUIDMixin, CreatedAtMixin):
     """
 
     __tablename__ = "favorites"
-    __table_args__ = (
-        UniqueConstraint("user_id", "property_id", name="uq_user_favorite"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "property_id", name="uq_user_favorite"),)
 
     # ── Who favorited ─────────────────────────────────────────────────────────
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -454,8 +464,4 @@ class Favorite(Base, UUIDMixin, CreatedAtMixin):
     # ── repr ──────────────────────────────────────────────────────────────────
 
     def __repr__(self) -> str:
-        return (
-            f"<Favorite id={self.id} "
-            f"user_id={self.user_id} "
-            f"property_id={self.property_id}>"
-        )
+        return f"<Favorite id={self.id} user_id={self.user_id} property_id={self.property_id}>"

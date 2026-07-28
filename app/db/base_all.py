@@ -38,103 +38,84 @@ ADDING A NEW MODEL:
 # with Base.metadata, which is the entire purpose of this file.
 """
 
+# ── Optional sanity check ─────────────────────────────────────────────────────
+# Uncomment during development to catch a missed model before Alembic runs.
+#
+import logging
+
 from app.db.base import Base  # noqa: F401  ← re-exported for alembic/env.py
+from app.domains.admin.models import (  # noqa: F401
+    AdminAuditLog,  # FK: admin_id → users (polymorphic target)
+)
+from app.domains.analytics.models import (  # noqa: F401
+    PropertyAnalytics,  # FK: property_id, user_id
+)
 
-
-# ── Tier 0 — No FK dependencies ──────────────────────────────────────────────
-# User has one self-referencing FK (suspended_by → users.id).
-# SQLAlchemy handles self-refs without ordering constraints.
-# PropertyFeature has no FKs at all — imported with its domain in Tier 1.
-
-from app.domains.users.models import (          # noqa: F401
-    User,
+# ── Tier 3 — FKs to Tier 2 tables ────────────────────────────────────────────
+from app.domains.bookings.models import (  # noqa: F401  # noqa: F401
+    AgentAvailability,  # FK: agent_id (users), property_id
+    Booking,  # FK: property_id, user_id, payment_id (nullable)
+)
+from app.domains.consent.models import (  # noqa: F401
+    UserConsentLog,  # FK: user_id → users
+)
+from app.domains.kyc.models import (  # noqa: F401  # noqa: F401
+    KycAdminReview,  # FK: kyc_document_id, admin_id (users)
+    KycDocument,  # FK: user_id → users
+)
+from app.domains.media.models import (  # noqa: F401  # noqa: F401
+    MediaAsset,  # FK: uploaded_by → users
+    PropertyImage,  # FK: property_id, media_asset_id
+    VirtualTour,  # FK: property_id
+)
+from app.domains.messaging.models import (  # noqa: F401  # noqa: F401
+    Conversation,  # FK: property_id (nullable)
+    ConversationParticipant,  # FK: conversation_id, user_id
+    Message,  # FK: conversation_id, sender_id (users)
+)
+from app.domains.notifications.models import (  # noqa: F401
+    Notification,  # FK: user_id → users
+    UserNotificationSettings,  # FK: user_id → users (UNIQUE)
+)
+from app.domains.payments.models import (  # noqa: F401
+    Payment,  # FK: user_id → users
 )
 
 # ── Tier 1 — FKs to User only ────────────────────────────────────────────────
 # These tables reference users.id and nothing else.
 # Reports and AdminAuditLog use polymorphic target_id — no DB FK constraint.
-
-from app.domains.properties.models import (     # noqa: F401
-    Property,                   # FK: owner_id, rented_by_user_id, approved_by → users
-    PropertyFeature,            # no FKs — imported here with its domain
-)
-from app.domains.payments.models import (       # noqa: F401
-    Payment,                    # FK: user_id → users
-)
-from app.domains.notifications.models import (  # noqa: F401
-    Notification,               # FK: user_id → users
-    UserNotificationSettings,   # FK: user_id → users (UNIQUE)
-)
-from app.domains.consent.models import (        # noqa: F401
-    UserConsentLog,             # FK: user_id → users
-)
-from app.domains.media.models import (          # noqa: F401
-    MediaAsset,                 # FK: uploaded_by → users
-)
-from app.domains.kyc.models import (            # noqa: F401
-    KycDocument,                # FK: user_id → users
-)
-from app.domains.reports.models import (        # noqa: F401
-    Report,                     # FK: reporter_id, reviewed_by → users (polymorphic target)
-)
-from app.domains.admin.models import (          # noqa: F401
-    AdminAuditLog,              # FK: admin_id → users (polymorphic target)
-)
-from app.domains.search.models import (         # noqa: F401
-    SavedSearch,                # FK: user_id → users
-)
-
 # ── Tier 2 — FKs to User + Property (and Tier 1 tables) ──────────────────────
-
-from app.domains.properties.models import (     # noqa: F401
-    PropertyFeatureMap,         # FK: property_id, feature_id
+from app.domains.properties.models import (  # noqa: F401  # noqa: F401
+    Property,  # FK: owner_id, rented_by_user_id, approved_by → users
+    PropertyFeature,  # no FKs — imported here with its domain
+    PropertyFeatureMap,  # FK: property_id, feature_id
 )
-from app.domains.media.models import (          # noqa: F401
-    PropertyImage,              # FK: property_id, media_asset_id
-    VirtualTour,                # FK: property_id
-)
-from app.domains.analytics.models import (      # noqa: F401
-    PropertyAnalytics,          # FK: property_id, user_id
-)
-from app.domains.bookings.models import (       # noqa: F401
-    AgentAvailability,          # FK: agent_id (users), property_id
-)
-from app.domains.messaging.models import (      # noqa: F401
-    Conversation,               # FK: property_id (nullable)
-)
-from app.domains.search.models import (         # noqa: F401
-    Favorite,                   # FK: user_id, property_id
-    SearchHistory,              # FK: user_id, property_id (nullable)
-)
-from app.domains.kyc.models import (            # noqa: F401
-    KycAdminReview,             # FK: kyc_document_id, admin_id (users)
-)
-
-# ── Tier 3 — FKs to Tier 2 tables ────────────────────────────────────────────
-
-from app.domains.bookings.models import (       # noqa: F401
-    Booking,                    # FK: property_id, user_id, payment_id (nullable)
-)
-from app.domains.subscriptions.models import (  # noqa: F401
-    Subscription,               # FK: user_id, payment_id
-)
-from app.domains.messaging.models import (      # noqa: F401
-    ConversationParticipant,    # FK: conversation_id, user_id
-    Message,                    # FK: conversation_id, sender_id (users)
+from app.domains.reports.models import (  # noqa: F401
+    Report,  # FK: reporter_id, reviewed_by → users (polymorphic target)
 )
 
 # ── Tier 4 — FKs to Booking (Tier 3) ─────────────────────────────────────────
-
-from app.domains.reviews.models import (        # noqa: F401
-    Review,                     # FK: user_id, property_id, booking_id
-    AgentReview,                # FK: agent_id, reviewer_id (users), booking_id
+from app.domains.reviews.models import (  # noqa: F401
+    AgentReview,  # FK: agent_id, reviewer_id (users), booking_id
+    Review,  # FK: user_id, property_id, booking_id
+)
+from app.domains.search.models import (  # noqa: F401  # noqa: F401
+    Favorite,  # FK: user_id, property_id
+    SavedSearch,  # FK: user_id → users
+    SearchHistory,  # FK: user_id, property_id (nullable)
+)
+from app.domains.subscriptions.models import (  # noqa: F401
+    Subscription,  # FK: user_id, payment_id
 )
 
+# ── Tier 0 — No FK dependencies ──────────────────────────────────────────────
+# User has one self-referencing FK (suspended_by → users.id).
+# SQLAlchemy handles self-refs without ordering constraints.
+# PropertyFeature has no FKs at all — imported with its domain in Tier 1.
+from app.domains.users.models import (  # noqa: F401
+    User,
+)
 
-# ── Optional sanity check ─────────────────────────────────────────────────────
-# Uncomment during development to catch a missed model before Alembic runs.
-#
-import logging
 _log = logging.getLogger(__name__)
 _n = len(Base.metadata.tables)
 _log.debug("base_all: %d tables registered with Base.metadata", _n)

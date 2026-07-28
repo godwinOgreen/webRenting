@@ -213,7 +213,12 @@ DAILY_ANALYTICS_MINUTE_UTC = 30
 # Which minute past the hour the daily analytics digest runs.
 
 VALID_NOTIFICATION_RELATED_TYPES = {
-    "booking", "property", "message", "subscription", "kyc", "report",
+    "booking",
+    "property",
+    "message",
+    "subscription",
+    "kyc",
+    "report",
 }
 # Used by: notification_service (validates related_type on creation)
 # Deep-link target types for notifications.
@@ -222,8 +227,13 @@ VALID_NOTIFICATION_RELATED_TYPES = {
 # ─── Analytics ───────────────────────────────────────────────────────────────
 
 VALID_ANALYTICS_EVENT_TYPES = {
-    "view", "contact", "booking", "favorite",
-    "phone_reveal", "share", "search_impression",
+    "view",
+    "contact",
+    "booking",
+    "favorite",
+    "phone_reveal",
+    "share",
+    "search_impression",
 }
 # Used by: analytics_service (validates event_type on tracking)
 # All tracked property interaction event types.
@@ -292,7 +302,12 @@ VALID_ADMIN_ACTIONS = {
 # All admin actions that create an AdminAuditLog entry.
 
 VALID_AUDIT_TARGET_TYPES = {
-    "user", "property", "report", "kyc_document", "subscription", "media_asset",
+    "user",
+    "property",
+    "report",
+    "kyc_document",
+    "subscription",
+    "media_asset",
 }
 # Used by: admin_service (validates target_type on audit log creation)
 # Entity types that admin actions can target.

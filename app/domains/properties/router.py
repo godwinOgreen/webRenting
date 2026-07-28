@@ -8,16 +8,16 @@ status field — this makes the state machine explicit in the API
 surface and lets us apply different guards per transition
 (e.g. approve/reject are admin-only and live in the admin router).
 """
+
 from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db, get_optional_user
+from app.core.dependencies import get_db, get_optional_user
 from app.domains.properties.schemas import (
     FeatureRead,
     PropertyCard,
@@ -37,6 +37,7 @@ router = APIRouter(prefix="/properties", tags=["properties"])
 
 # ── GET /properties/features ─────────────────────────────────────────────────
 
+
 @router.get(
     "/features",
     response_model=SuccessResponse[list[FeatureRead]],
@@ -52,6 +53,7 @@ async def list_features(
 
 # ── GET /properties/mine ──────────────────────────────────────────────────────
 
+
 @router.get(
     "/mine",
     response_model=PaginatedResponse[PropertyCard],
@@ -60,18 +62,17 @@ async def list_features(
 async def list_mine(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    approval_status: Optional[str] = Query(None),
+    approval_status: str | None = Query(None),
     current_user: User = Depends(require_agent()),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[PropertyCard]:
     """Retrieve all properties owned by the authenticated agent."""
     svc = PropertyService(db)
-    return await svc.list_for_owner(
-        current_user, page, per_page, approval_status
-    )
+    return await svc.list_for_owner(current_user, page, per_page, approval_status)
 
 
 # ── GET /properties/mine/{property_id} ────────────────────────────────────────
+
 
 @router.get(
     "/mine/{property_id}",
@@ -85,12 +86,11 @@ async def get_my_property(
 ) -> SuccessResponse[PropertyRead]:
     """View own listing in any state. Includes rejection_reason for rejected listings."""
     svc = PropertyService(db)
-    return SuccessResponse.ok(
-        data=await svc.get_for_owner(property_id, current_user)
-    )
+    return SuccessResponse.ok(data=await svc.get_for_owner(property_id, current_user))
 
 
 # ── POST /properties ──────────────────────────────────────────────────────────
+
 
 @router.post(
     "",
@@ -113,46 +113,56 @@ async def create_property(
 
 # ── GET /properties (public search) ──────────────────────────────────────────
 
+
 @router.get(
     "",
     response_model=PaginatedResponse[PropertyCard],
     summary="Search published property listings",
 )
 async def search_properties(
-    city: Optional[str] = Query(None),
-    state: Optional[str] = Query(None),
-    property_type: Optional[str] = Query(None),
-    listing_status: Optional[str] = Query(None),
-    min_price: Optional[Decimal] = Query(None, gt=0),
-    max_price: Optional[Decimal] = Query(None, gt=0),
-    min_bedrooms: Optional[int] = Query(None, ge=0),
-    max_bedrooms: Optional[int] = Query(None, ge=0),
-    min_bathrooms: Optional[int] = Query(None, ge=0),
+    city: str | None = Query(None),
+    state: str | None = Query(None),
+    property_type: str | None = Query(None),
+    listing_status: str | None = Query(None),
+    min_price: Decimal | None = Query(None, gt=0),
+    max_price: Decimal | None = Query(None, gt=0),
+    min_bedrooms: int | None = Query(None, ge=0),
+    max_bedrooms: int | None = Query(None, ge=0),
+    min_bathrooms: int | None = Query(None, ge=0),
     featured_only: bool = Query(False),
     verified_only: bool = Query(False),
-    lat: Optional[float] = Query(None, ge=-90, le=90),
-    lng: Optional[float] = Query(None, ge=-180, le=180),
-    radius_km: Optional[float] = Query(None, gt=0, le=50),
+    lat: float | None = Query(None, ge=-90, le=90),
+    lng: float | None = Query(None, ge=-180, le=180),
+    radius_km: float | None = Query(None, gt=0, le=50),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[PropertyCard]:
     """Public search endpoint. Native Decimal query types are parsed out cleanly here."""
     filters = PropertySearch(
-        city=city, state=state,
-        property_type=property_type, listing_status=listing_status,
-        min_price=min_price, max_price=max_price,
-        min_bedrooms=min_bedrooms, max_bedrooms=max_bedrooms,
+        city=city,
+        state=state,
+        property_type=property_type,
+        listing_status=listing_status,
+        min_price=min_price,
+        max_price=max_price,
+        min_bedrooms=min_bedrooms,
+        max_bedrooms=max_bedrooms,
         min_bathrooms=min_bathrooms,
-        featured_only=featured_only, verified_only=verified_only,
-        lat=lat, lng=lng, radius_km=radius_km,
-        page=page, per_page=per_page,
+        featured_only=featured_only,
+        verified_only=verified_only,
+        lat=lat,
+        lng=lng,
+        radius_km=radius_km,
+        page=page,
+        per_page=per_page,
     )
     svc = PropertyService(db)
     return await svc.search(filters)
 
 
 # ── GET /properties/{id} ──────────────────────────────────────────────────────
+
 
 @router.get(
     "/{property_id}",
@@ -162,7 +172,7 @@ async def search_properties(
 async def get_property(
     property_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ) -> SuccessResponse[PropertyPublicRead]:
     """
     Public endpoint. Address hidden/shown based on address_hidden flag
@@ -175,6 +185,7 @@ async def get_property(
 
 
 # ── PATCH /properties/{id} ────────────────────────────────────────────────────
+
 
 @router.patch(
     "/{property_id}",
@@ -197,10 +208,11 @@ async def update_property(
 
 # ── Lifecycle transitions ─────────────────────────────────────────────────────
 
+
 @router.post(
     "/{property_id}/submit",
     response_model=SuccessResponse[PropertyRead],
-    summary="Submit listing for admin review"
+    summary="Submit listing for admin review",
 )
 async def submit(
     property_id: uuid.UUID,
@@ -215,8 +227,11 @@ async def submit(
     )
 
 
-@router.post("/{property_id}/publish", response_model=SuccessResponse[PropertyRead],
-             summary="Publish an approved listing")
+@router.post(
+    "/{property_id}/publish",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Publish an approved listing",
+)
 async def publish(
     property_id: uuid.UUID,
     current_user: User = Depends(require_agent()),
@@ -229,8 +244,11 @@ async def publish(
     )
 
 
-@router.post("/{property_id}/reserve", response_model=SuccessResponse[PropertyRead],
-             summary="Mark listing as reserved")
+@router.post(
+    "/{property_id}/reserve",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Mark listing as reserved",
+)
 async def reserve(
     property_id: uuid.UUID,
     current_user: User = Depends(require_agent()),
@@ -243,8 +261,11 @@ async def reserve(
     )
 
 
-@router.post("/{property_id}/mark-rented", response_model=SuccessResponse[PropertyRead],
-             summary="Mark listing as rented")
+@router.post(
+    "/{property_id}/mark-rented",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Mark listing as rented",
+)
 async def mark_rented(
     property_id: uuid.UUID,
     current_user: User = Depends(require_agent()),
@@ -257,8 +278,11 @@ async def mark_rented(
     )
 
 
-@router.post("/{property_id}/mark-sold", response_model=SuccessResponse[PropertyRead],
-             summary="Mark listing as sold")
+@router.post(
+    "/{property_id}/mark-sold",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Mark listing as sold",
+)
 async def mark_sold(
     property_id: uuid.UUID,
     current_user: User = Depends(require_agent()),
@@ -271,8 +295,11 @@ async def mark_sold(
     )
 
 
-@router.post("/{property_id}/archive", response_model=SuccessResponse[PropertyRead],
-             summary="Archive a listing")
+@router.post(
+    "/{property_id}/archive",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Archive a listing",
+)
 async def archive(
     property_id: uuid.UUID,
     current_user: User = Depends(require_agent()),

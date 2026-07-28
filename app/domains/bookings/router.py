@@ -1,9 +1,10 @@
 """
 domains/bookings/router.py
 
-HTTP API layer orchestrating routing, security guards, and response serializations 
+HTTP API layer orchestrating routing, security guards, and response serializations
 for viewing availability and property bookings.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -28,6 +29,7 @@ router = APIRouter(tags=["bookings"])
 
 
 # ── Agent Availability ────────────────────────────────────────────────────────
+
 
 @router.post(
     "/availability",
@@ -93,6 +95,7 @@ async def delete_slot(
 
 
 # ── Bookings (renter) ─────────────────────────────────────────────────────────
+
 
 @router.post(
     "/bookings",
@@ -167,6 +170,7 @@ async def cancel_booking(
 
 # ── Bookings (agent) ──────────────────────────────────────────────────────────
 
+
 @router.get(
     "/bookings/agent/mine",
     response_model=PaginatedResponse[BookingRead],
@@ -195,9 +199,7 @@ async def get_agent_booking(
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse[BookingRead]:
     svc = BookingService(db)
-    return SuccessResponse.ok(
-        data=await svc.get_for_agent(booking_id, current_user)
-    )
+    return SuccessResponse.ok(data=await svc.get_for_agent(booking_id, current_user))
 
 
 @router.post(

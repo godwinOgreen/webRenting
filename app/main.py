@@ -43,6 +43,7 @@ logging.getLogger("sqlalchemy.engine").propagate = False
 
 # ─── Lifespan (startup / shutdown) ───────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -92,10 +93,12 @@ async def pydantic_validation_exception_handler(
     """
     formatted_errors: dict[str, list[str]] = {}
     for error in exc.errors():
-        field_path = ".".join(
-            str(loc) for loc in error["loc"]
-            if loc not in ("body", "query", "path", "header")
-        ) or "payload"
+        field_path = (
+            ".".join(
+                str(loc) for loc in error["loc"] if loc not in ("body", "query", "path", "header")
+            )
+            or "payload"
+        )
         formatted_errors.setdefault(field_path, []).append(error["msg"])
 
     logger.debug(
@@ -217,6 +220,7 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
+
 
 @app.get("/health")
 async def health_check():

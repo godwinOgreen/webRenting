@@ -26,18 +26,18 @@ Or outside a request (tasks, startup):
     from app.core.redis_client import redis_client
     await redis_client.ping()
 """
+
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import redis.asyncio as aioredis
 from redis.asyncio import Redis
-from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.core.config import settings
 
-
 # ── Client singleton ──────────────────────────────────────────────────────────
+
 
 def _make_client() -> Redis:
     """
@@ -81,7 +81,8 @@ redis_client: Redis = _make_client()
 
 # ── FastAPI dependency ────────────────────────────────────────────────────────
 
-async def get_redis() -> AsyncGenerator[Redis, None]:
+
+async def get_redis() -> AsyncGenerator[Redis]:
     """
     Yields the shared Redis client as a FastAPI dependency.
 
@@ -101,6 +102,7 @@ async def get_redis() -> AsyncGenerator[Redis, None]:
 
 # ── Startup / shutdown helpers ────────────────────────────────────────────────
 # Called from app/main.py lifespan events.
+
 
 async def connect_redis() -> None:
     """
@@ -139,6 +141,7 @@ async def disconnect_redis() -> None:
 # ── Key namespace helpers ─────────────────────────────────────────────────────
 # Centralise key construction so a typo never causes a silent cache miss
 # across two callers building the same key differently.
+
 
 class RedisKeys:
     """

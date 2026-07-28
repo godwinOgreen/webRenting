@@ -40,10 +40,10 @@ rather than importing get_db from one module and get_current_user from
 another. The actual session lifecycle (commit/rollback/close) is
 implemented once, in db/session.py — see that module for details.
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -70,7 +70,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
@@ -152,9 +152,9 @@ async def get_current_user(
 
 
 async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: AsyncSession = Depends(get_db),
-) -> Optional[User]:
+) -> User | None:
     """
     Like get_current_user, but returns None instead of raising when no
     Authorization header is present at all — for endpoints that work

@@ -14,13 +14,15 @@ Usage:
 
 import uuid
 from datetime import datetime
-from sqlalchemy.orm import Mapped, mapped_column
+
 from sqlalchemy import DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
 
 class UUIDMixin:
     """UUID primary key with PostgreSQL gen_random_uuid()."""
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
@@ -31,6 +33,7 @@ class UUIDMixin:
 
 class CreatedAtMixin:
     """created_at — set once on insert."""
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -43,6 +46,7 @@ class UpdatedAtMixin:
     updated_at — auto-updated by DB trigger (created in Alembic migration).
     onupdate=func.now() is the Python-side fallback.
     """
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -53,4 +57,5 @@ class UpdatedAtMixin:
 
 class TimestampMixin(CreatedAtMixin, UpdatedAtMixin):
     """created_at + updated_at."""
+
     pass

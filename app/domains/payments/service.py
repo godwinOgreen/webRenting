@@ -10,14 +10,14 @@ domains but not other domains' services or repositories.
 Idempotency: handle_webhook() checks the payment's current status before
 acting — if already SUCCESS, the webhook is a no-op (replay protection).
 """
+
 from __future__ import annotations
 
 import hashlib
 import hmac
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +28,7 @@ from app.constants import (
 )
 from app.core.config import settings
 from app.core.exceptions import NotFoundException, ValidationException
-from app.domains.payments.models import Payment, PaymentStatus
+from app.domains.payments.models import PaymentStatus
 from app.domains.payments.repository import PaymentRepository
 from app.domains.payments.schemas import (
     InitializePaymentRequest,
@@ -81,6 +81,7 @@ class PaymentService:
         )
 
         from app.integrations.paystack import initialize_transaction
+
         result = await initialize_transaction(
             email=user.email,
             amount_kobo=amount_kobo,
@@ -107,7 +108,7 @@ class PaymentService:
     # ── Webhook ───────────────────────────────────────────────────────────────
 
     @staticmethod
-    def verify_webhook_signature(raw_body: bytes, signature_header: Optional[str]) -> bool:
+    def verify_webhook_signature(raw_body: bytes, signature_header: str | None) -> bool:
         """
         Verify Paystack's X-Paystack-Signature: HMAC-SHA512 of the raw
         request body, keyed with PAYSTACK_SECRET_KEY.
@@ -122,9 +123,7 @@ class PaymentService:
         ).hexdigest()
         return hmac.compare_digest(computed, signature_header)
 
-    async def handle_webhook(
-        self, payload: PaystackWebhookPayload
-    ) -> None:
+    async def handle_webhook(self, payload: PaystackWebhookPayload) -> None:
         """
         Process a verified Paystack webhook event.
         Idempotent — already-successful payments are no-ops.
@@ -172,7 +171,7 @@ class PaymentService:
             await self.repo.mark_failed(payment)
             return
 
-        paid_at = datetime.now(tz=timezone.utc)
+        paid_at = datetime.now(tz=UTC)
         await self.repo.mark_success(payment, paid_at)
 
         # Validate subscription plan type
@@ -212,9 +211,7 @@ class PaymentService:
         items = [PaymentRead.model_validate(p) for p in payments]
         return PaginatedResponse.paginate(items, total, page, per_page)
 
-    async def get_for_user(
-        self, payment_id: uuid.UUID, user: User
-    ) -> PaymentRead:
+    async def get_for_user(self, payment_id: uuid.UUID, user: User) -> PaymentRead:
         payment = await self.repo.get_by_id(payment_id)
         if payment is None or payment.user_id != user.id:
             raise NotFoundException(message="Payment not found")

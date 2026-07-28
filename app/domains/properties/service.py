@@ -22,17 +22,17 @@ State machine transitions (enforced here, not in the repository):
   SOLD → ARCHIVED            auto via Celery
   ARCHIVED → PENDING_REVIEW  submit_for_review() (republish)
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import LISTING_EXPIRY_DAYS
-from app.core.exceptions import ConflictException, ForbiddenException, NotFoundException
+from app.core.exceptions import ConflictException, NotFoundException
 from app.domains.properties.models import ApprovalStatus, Property
 from app.domains.properties.repository import PropertyRepository
 from app.domains.properties.schemas import (
@@ -110,7 +110,7 @@ class PropertyService:
     async def get_public(
         self,
         property_id: uuid.UUID,
-        requesting_user: Optional[User] = None,
+        requesting_user: User | None = None,
         has_confirmed_booking: bool = False,
     ) -> PropertyPublicRead:
         """
@@ -130,18 +130,12 @@ class PropertyService:
         if prop is None:
             raise NotFoundException(message="Property not found")
 
-        is_admin = requesting_user and requesting_user.role in (
-            UserRole.ADMIN, UserRole.MODERATOR
-        )
+        is_admin = requesting_user and requesting_user.role in (UserRole.ADMIN, UserRole.MODERATOR)
 
         if not is_admin and not prop.is_publicly_visible:
             raise NotFoundException(message="Property not found")
 
-        show_full_address = (
-            not prop.address_hidden
-            or has_confirmed_booking
-            or is_admin
-        )
+        show_full_address = not prop.address_hidden or has_confirmed_booking or is_admin
 
         return self._to_public_read(prop, show_full_address)
 
@@ -150,12 +144,10 @@ class PropertyService:
         owner: User,
         page: int,
         per_page: int,
-        approval_status: Optional[str] = None,
+        approval_status: str | None = None,
     ) -> PaginatedResponse[PropertyCard]:
         """Agent's own listings dashboard."""
-        props, total = await self.repo.list_for_owner(
-            owner.id, page, per_page, approval_status
-        )
+        props, total = await self.repo.list_for_owner(owner.id, page, per_page, approval_status)
         cards = [self._to_card(p) for p in props]
         return PaginatedResponse.paginate(cards, total, page, per_page)
 
@@ -222,7 +214,7 @@ class PropertyService:
             ApprovalStatus.DRAFT,
             ApprovalStatus.REJECTED,
             ApprovalStatus.ARCHIVED,
-            ApprovalStatus.PUBLISHED,   # edit after publish
+            ApprovalStatus.PUBLISHED,  # edit after publish
         }
         if prop.approval_status not in allowed_from:
             raise ConflictException(
@@ -233,8 +225,7 @@ class PropertyService:
         # Clear rejection reason when resubmitting
         prop.rejection_reason = None
         updated = await self.repo.update_status(prop, ApprovalStatus.PENDING_REVIEW)
-        logger.info("Property submitted for review",
-                    extra={"property_id": str(property_id)})
+        logger.info("Property submitted for review", extra={"property_id": str(property_id)})
         return PropertyRead.model_validate(updated)
 
     async def approve(
@@ -253,11 +244,10 @@ class PropertyService:
                 error_code="invalid_state_transition",
             )
 
-        updated = await self.repo.update_status(
-            prop, ApprovalStatus.APPROVED, approved_by=admin.id
+        updated = await self.repo.update_status(prop, ApprovalStatus.APPROVED, approved_by=admin.id)
+        logger.info(
+            "Property approved", extra={"property_id": str(property_id), "admin_id": str(admin.id)}
         )
-        logger.info("Property approved",
-                    extra={"property_id": str(property_id), "admin_id": str(admin.id)})
         return PropertyRead.model_validate(updated)
 
     async def reject(
@@ -280,8 +270,9 @@ class PropertyService:
         updated = await self.repo.update_status(
             prop, ApprovalStatus.REJECTED, rejection_reason=reason
         )
-        logger.info("Property rejected",
-                    extra={"property_id": str(property_id), "admin_id": str(admin.id)})
+        logger.info(
+            "Property rejected", extra={"property_id": str(property_id), "admin_id": str(admin.id)}
+        )
         return PropertyRead.model_validate(updated)
 
     async def publish(
@@ -302,34 +293,29 @@ class PropertyService:
                 error_code="invalid_state_transition",
             )
 
-        prop.expires_at = datetime.now(tz=timezone.utc) + timedelta(
-            days=LISTING_EXPIRY_DAYS
-        )
+        prop.expires_at = datetime.now(tz=UTC) + timedelta(days=LISTING_EXPIRY_DAYS)
         updated = await self.repo.update_status(prop, ApprovalStatus.PUBLISHED)
-        logger.info("Property published",
-                    extra={"property_id": str(property_id)})
-        
+        logger.info("Property published", extra={"property_id": str(property_id)})
+
         from app.tasks.celery_app import celery_app
+
         celery_app.send_task(
             "app.tasks.saved_search_alerts.notify_matching_saved_searches",
             args=[str(property_id)],
         )
-        
+
         return PropertyRead.model_validate(updated)
 
-    async def mark_reserved(
-        self, property_id: uuid.UUID, agent: User
-    ) -> PropertyRead:
+    async def mark_reserved(self, property_id: uuid.UUID, agent: User) -> PropertyRead:
         """PUBLISHED → RESERVED."""
         return await self._transition(
-            property_id, agent.id,
+            property_id,
+            agent.id,
             from_states={ApprovalStatus.PUBLISHED},
             to_state=ApprovalStatus.RESERVED,
         )
 
-    async def mark_rented(
-        self, property_id: uuid.UUID, agent: User
-    ) -> PropertyRead:
+    async def mark_rented(self, property_id: uuid.UUID, agent: User) -> PropertyRead:
         """PUBLISHED | RESERVED → RENTED. Stamps rented_at."""
         prop = await self._get_owned_or_raise(property_id, agent.id)
         allowed = {ApprovalStatus.PUBLISHED, ApprovalStatus.RESERVED}
@@ -338,26 +324,24 @@ class PropertyService:
                 message="Only published or reserved listings can be marked as rented",
                 error_code="invalid_state_transition",
             )
-        prop.rented_at = datetime.now(tz=timezone.utc)
+        prop.rented_at = datetime.now(tz=UTC)
         updated = await self.repo.update_status(prop, ApprovalStatus.RENTED)
         return PropertyRead.model_validate(updated)
 
-    async def mark_sold(
-        self, property_id: uuid.UUID, agent: User
-    ) -> PropertyRead:
+    async def mark_sold(self, property_id: uuid.UUID, agent: User) -> PropertyRead:
         """PUBLISHED → SOLD."""
         return await self._transition(
-            property_id, agent.id,
+            property_id,
+            agent.id,
             from_states={ApprovalStatus.PUBLISHED},
             to_state=ApprovalStatus.SOLD,
         )
 
-    async def archive(
-        self, property_id: uuid.UUID, agent: User
-    ) -> PropertyRead:
+    async def archive(self, property_id: uuid.UUID, agent: User) -> PropertyRead:
         """PUBLISHED | RESERVED | RENTED | SOLD → ARCHIVED. Agent-initiated."""
         return await self._transition(
-            property_id, agent.id,
+            property_id,
+            agent.id,
             from_states={
                 ApprovalStatus.PUBLISHED,
                 ApprovalStatus.RESERVED,
@@ -369,9 +353,7 @@ class PropertyService:
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    async def _get_owned_or_raise(
-        self, property_id: uuid.UUID, owner_id: uuid.UUID
-    ) -> Property:
+    async def _get_owned_or_raise(self, property_id: uuid.UUID, owner_id: uuid.UUID) -> Property:
         prop = await self.repo.get_by_id_and_owner(property_id, owner_id)
         if prop is None:
             raise NotFoundException(message="Property not found")
@@ -412,9 +394,7 @@ class PropertyService:
             blurhash=primary.blurhash if primary else None,
         )
 
-    def _to_public_read(
-        self, prop: Property, show_full_address: bool
-    ) -> PropertyPublicRead:
+    def _to_public_read(self, prop: Property, show_full_address: bool) -> PropertyPublicRead:
         return PropertyPublicRead(
             id=prop.id,
             title=prop.title,

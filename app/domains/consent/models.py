@@ -102,24 +102,26 @@ Right to erasure (NDPR):
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-import sqlalchemy as sa
 from sqlalchemy import (
-    Boolean, ForeignKey, String, text,
+    Boolean,
+    ForeignKey,
+    String,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, CreatedAtMixin
+from app.db.mixins import CreatedAtMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.users.models import User
 
 
 # ─── Model ───────────────────────────────────────────────────────────────────
+
 
 class UserConsentLog(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -157,7 +159,8 @@ class UserConsentLog(Base, UUIDMixin, CreatedAtMixin):
 
     # ── What ──────────────────────────────────────────────────────────────────
     consent_type: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
         comment=(
             "What the user consented to. Valid values (validated in consent_service): "
             "terms_of_service | privacy_policy | data_processing | "
@@ -166,7 +169,8 @@ class UserConsentLog(Base, UUIDMixin, CreatedAtMixin):
         ),
     )
     consented: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         comment=(
             "True = user GAVE consent. False = user WITHDREW consent. "
             "The latest row per (user_id, consent_type) determines current status."
@@ -174,8 +178,9 @@ class UserConsentLog(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Which version of the legal document ───────────────────────────────────
-    consent_version: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+    consent_version: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
         comment=(
             "Version of the legal document the user consented to. "
             "e.g. '2.1', '3.0'. Required for terms_of_service and privacy_policy. "
@@ -185,8 +190,9 @@ class UserConsentLog(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── How (evidence for NDPR compliance) ────────────────────────────────────
-    ip_address: Mapped[Optional[str]] = mapped_column(
-        String(45), nullable=True,
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
         comment=(
             "IP address at the time of consent. IPv6 max length = 45 chars. "
             "Stored as NDPR legal evidence — proves the consent action came "
@@ -194,8 +200,9 @@ class UserConsentLog(Base, UUIDMixin, CreatedAtMixin):
             "but IS stored here (legal requirement)."
         ),
     )
-    user_agent: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True,
+    user_agent: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
         comment=(
             "Browser/device user agent at the time of consent. "
             "Additional evidence for NDPR compliance. "

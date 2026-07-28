@@ -39,18 +39,23 @@ import enum
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    BigInteger, CheckConstraint, DateTime, ForeignKey, String, text, func,
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin
+from app.db.mixins import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.subscriptions.models import Subscription
@@ -58,6 +63,7 @@ if TYPE_CHECKING:
 
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
+
 
 class PaymentStatus(str, enum.Enum):
     """
@@ -68,6 +74,7 @@ class PaymentStatus(str, enum.Enum):
     FAILED     → Paystack webhook reported failure (card declined, timeout, etc.)
     REFUNDED   → manual refund issued (via Paystack dashboard or API)
     """
+
     PENDING = "pending"
     SUCCESSFUL = "successful"
     FAILED = "failed"
@@ -84,6 +91,7 @@ _payment_status_col = sa.Enum(
 
 
 # ─── Model ───────────────────────────────────────────────────────────────────
+
 
 class Payment(Base, UUIDMixin, TimestampMixin):
     """
@@ -111,8 +119,9 @@ class Payment(Base, UUIDMixin, TimestampMixin):
     )
 
     # ── What they paid for ────────────────────────────────────────────────────
-    subscription_type: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+    subscription_type: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
         comment=(
             "Intended plan: 'renter' or 'agent'. String, not FK or PostgreSQL enum. "
             "Validated by Pydantic at API boundary. "
@@ -122,25 +131,29 @@ class Payment(Base, UUIDMixin, TimestampMixin):
 
     # ── Transaction details ───────────────────────────────────────────────────
     amount: Mapped[int] = mapped_column(
-        BigInteger, nullable=False,
+        BigInteger,
+        nullable=False,
         comment="Amount in kobo (Paystack native unit). 100000 = ₦1,000.",
     )
     status: Mapped[PaymentStatus] = mapped_column(
-        _payment_status_col, nullable=False,
+        _payment_status_col,
+        nullable=False,
         server_default=text("'pending'"),
         default=PaymentStatus.PENDING,
         index=True,
     )
     provider: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
         server_default=text("'paystack'"),
         default="paystack",
         comment="Payment gateway name. Currently always 'paystack'.",
     )
 
     # ── Paystack-specific fields ──────────────────────────────────────────────
-    paystack_reference: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True,
+    paystack_reference: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
         unique=True,
         index=True,
         comment=(
@@ -148,19 +161,19 @@ class Payment(Base, UUIDMixin, TimestampMixin):
             "Set when payment is initialized. Used to match inbound webhooks."
         ),
     )
-    paid_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         comment="Set by webhook handler when Paystack confirms payment received.",
     )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         comment="Payment link/session expiry if applicable.",
     )
 
     # ── Constraints ───────────────────────────────────────────────────────────
-    __table_args__ = (
-        CheckConstraint("amount > 0", name="chk_payment_amount"),
-    )
+    __table_args__ = (CheckConstraint("amount > 0", name="chk_payment_amount"),)
 
     # ── Relationships ─────────────────────────────────────────────────────────
     user: Mapped[User] = relationship(

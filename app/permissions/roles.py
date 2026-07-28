@@ -32,10 +32,10 @@ Role predicate hierarchy:
     can_manage_users() — admin + super_admin (not moderator)
     can_manage_platform() — super_admin only
 """
+
 from __future__ import annotations
 
 from app.domains.users.models import AdminRole, User, UserRole
-
 
 # ── Role predicates ───────────────────────────────────────────────────────────
 # Pure functions — take a User, return bool.
@@ -68,10 +68,7 @@ def is_moderator(user: User) -> bool:
     on admin users. A user with admin_role=moderator still has
     role=admin in users.role.
     """
-    return (
-        user.role == UserRole.ADMIN
-        and user.admin_role == AdminRole.MODERATOR
-    )
+    return user.role == UserRole.ADMIN and user.admin_role == AdminRole.MODERATOR
 
 
 def is_standard_admin(user: User) -> bool:
@@ -79,18 +76,12 @@ def is_standard_admin(user: User) -> bool:
     True for admin users whose admin_role is exactly admin
     (not super_admin, not moderator).
     """
-    return (
-        user.role == UserRole.ADMIN
-        and user.admin_role == AdminRole.ADMIN
-    )
+    return user.role == UserRole.ADMIN and user.admin_role == AdminRole.ADMIN
 
 
 def is_super_admin(user: User) -> bool:
     """True for admin users whose admin_role is super_admin."""
-    return (
-        user.role == UserRole.ADMIN
-        and user.admin_role == AdminRole.SUPER_ADMIN
-    )
+    return user.role == UserRole.ADMIN and user.admin_role == AdminRole.SUPER_ADMIN
 
 
 # ── Capability predicates ─────────────────────────────────────────────────────
@@ -117,9 +108,9 @@ def can_manage_users(user: User) -> bool:
     the moderation workflow, but cannot promote, demote, or view the
     full user management interface.
     """
-    return (
-        user.role == UserRole.ADMIN
-        and user.admin_role in (AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+    return user.role == UserRole.ADMIN and user.admin_role in (
+        AdminRole.ADMIN,
+        AdminRole.SUPER_ADMIN,
     )
 
 
@@ -130,10 +121,7 @@ def can_manage_platform(user: User) -> bool:
 
     Super_admin only. This is the highest-privilege check.
     """
-    return (
-        user.role == UserRole.ADMIN
-        and user.admin_role == AdminRole.SUPER_ADMIN
-    )
+    return user.role == UserRole.ADMIN and user.admin_role == AdminRole.SUPER_ADMIN
 
 
 # ── Admin hierarchy ──────────────────────────────────────────────────────────
@@ -141,8 +129,8 @@ def can_manage_platform(user: User) -> bool:
 # Referenced by guards.py require_admin_level().
 
 _ADMIN_HIERARCHY: dict[str, int] = {
-    AdminRole.MODERATOR.value:   0,
-    AdminRole.ADMIN.value:       1,
+    AdminRole.MODERATOR.value: 0,
+    AdminRole.ADMIN.value: 1,
     AdminRole.SUPER_ADMIN.value: 2,
 }
 
@@ -154,14 +142,14 @@ _ADMIN_HIERARCHY: dict[str, int] = {
 
 ROLE_DISPLAY_NAMES: dict[UserRole, str] = {
     UserRole.RENTER: "Renter",
-    UserRole.AGENT:  "Agent",
-    UserRole.ADMIN:  "Admin",
+    UserRole.AGENT: "Agent",
+    UserRole.ADMIN: "Admin",
 }
 
 ADMIN_ROLE_DISPLAY_NAMES: dict[AdminRole, str] = {
     AdminRole.SUPER_ADMIN: "Super Admin",
-    AdminRole.ADMIN:       "Admin",
-    AdminRole.MODERATOR:   "Moderator",
+    AdminRole.ADMIN: "Admin",
+    AdminRole.MODERATOR: "Moderator",
 }
 
 
@@ -178,9 +166,5 @@ def display_role(user: User) -> str:
         admin, admin_role=moderator       → "Moderator"
     """
     if user.role == UserRole.ADMIN and user.admin_role:
-        return ADMIN_ROLE_DISPLAY_NAMES.get(
-            user.admin_role, "Admin"
-        )
-    return ROLE_DISPLAY_NAMES.get(
-        user.role, user.role.value
-    )
+        return ADMIN_ROLE_DISPLAY_NAMES.get(user.admin_role, "Admin")
+    return ROLE_DISPLAY_NAMES.get(user.role, user.role.value)

@@ -1,4 +1,5 @@
 """CRUD operations for properties."""
+
 import pytest
 from httpx import AsyncClient
 
@@ -26,7 +27,9 @@ PROPERTY_PAYLOAD = {
 @pytest.mark.asyncio
 async def test_create_property(client: AsyncClient, agent_token: str):
     resp = await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(agent_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(agent_token),
     )
     assert resp.status_code == 201
     data = resp.json()["data"]
@@ -39,7 +42,9 @@ async def test_create_property(client: AsyncClient, agent_token: str):
 @pytest.mark.asyncio
 async def test_renter_cannot_create_property(client: AsyncClient, renter_token: str):
     resp = await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(renter_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(renter_token),
     )
     assert resp.status_code == 403
 
@@ -48,13 +53,16 @@ async def test_renter_cannot_create_property(client: AsyncClient, renter_token: 
 async def test_get_own_property(client: AsyncClient, agent_token: str):
     # Create
     resp = await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(agent_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(agent_token),
     )
     prop_id = resp.json()["data"]["id"]
 
     # Read
     resp = await client.get(
-        f"/properties/mine/{prop_id}", headers=auth(agent_token),
+        f"/properties/mine/{prop_id}",
+        headers=auth(agent_token),
     )
     assert resp.status_code == 200
     assert resp.json()["data"]["id"] == prop_id
@@ -64,7 +72,9 @@ async def test_get_own_property(client: AsyncClient, agent_token: str):
 @pytest.mark.asyncio
 async def test_update_draft_property(client: AsyncClient, agent_token: str):
     resp = await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(agent_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(agent_token),
     )
     prop_id = resp.json()["data"]["id"]
 
@@ -80,7 +90,9 @@ async def test_update_draft_property(client: AsyncClient, agent_token: str):
 @pytest.mark.asyncio
 async def test_update_rejects_invalid_property_type(client: AsyncClient, agent_token: str):
     resp = await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(agent_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(agent_token),
     )
     prop_id = resp.json()["data"]["id"]
 
@@ -106,7 +118,9 @@ async def test_create_rejects_missing_required_fields(client: AsyncClient, agent
 async def test_create_rejects_invalid_currency(client: AsyncClient, agent_token: str):
     payload = {**PROPERTY_PAYLOAD, "currency": "INVALID"}
     resp = await client.post(
-        "/properties", json=payload, headers=auth(agent_token),
+        "/properties",
+        json=payload,
+        headers=auth(agent_token),
     )
     assert resp.status_code == 400
 
@@ -115,7 +129,9 @@ async def test_create_rejects_invalid_currency(client: AsyncClient, agent_token:
 async def test_list_own_properties(client: AsyncClient, agent_token: str):
     # Create two properties
     await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(agent_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(agent_token),
     )
     await client.post(
         "/properties",

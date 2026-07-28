@@ -58,18 +58,17 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import DateTime, ForeignKey, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Text, text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin
-from app.constants import MAX_REPORTS_PER_ENTITY, REPORT_COOLDOWN_HOURS
+from app.db.mixins import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.users.models import User
@@ -77,8 +76,10 @@ if TYPE_CHECKING:
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
+
 class ReportTargetType(str, enum.Enum):
     """What kind of entity is being reported. Drives polymorphic lookup."""
+
     PROPERTY = "property"
     USER = "user"
     MESSAGE = "message"
@@ -91,6 +92,7 @@ class ReportReason(str, enum.Enum):
     Stored as PostgreSQL enum for type safety — these are standard
     moderation categories. Directly maps to app.constants.REPORT_REASONS.
     """
+
     FAKE_LISTING = "fake_listing"
     SCAM = "scam"
     INAPPROPRIATE_CONTENT = "inappropriate_content"
@@ -112,6 +114,7 @@ class ReportStatus(str, enum.Enum):
 
     Terminal states: RESOLVED, DISMISSED.
     """
+
     PENDING = "pending"
     REVIEWED = "reviewed"
     RESOLVED = "resolved"
@@ -141,6 +144,7 @@ _report_status_col = sa.Enum(
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 
+
 class Report(Base, UUIDMixin, TimestampMixin):
     """
     A user-filed report. Polymorphic target via (target_type, target_id).
@@ -167,7 +171,7 @@ class Report(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "reports"
 
     # ── Who filed the report ──────────────────────────────────────────────────
-    reporter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    reporter_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -182,7 +186,8 @@ class Report(Base, UUIDMixin, TimestampMixin):
 
     # ── What is being reported (polymorphic) ──────────────────────────────────
     target_type: Mapped[ReportTargetType] = mapped_column(
-        _report_target_type_col, nullable=False,
+        _report_target_type_col,
+        nullable=False,
         index=True,
         comment=(
             "Type of entity being reported: property | user | message | review. "
@@ -190,7 +195,8 @@ class Report(Base, UUIDMixin, TimestampMixin):
         ),
     )
     target_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False,
+        UUID(as_uuid=True),
+        nullable=False,
         index=True,
         comment=(
             "Polymorphic FK — references properties.id, users.id, "
@@ -201,23 +207,26 @@ class Report(Base, UUIDMixin, TimestampMixin):
 
     # ── Why it's being reported ───────────────────────────────────────────────
     reason: Mapped[ReportReason] = mapped_column(
-        _report_reason_col, nullable=False,
+        _report_reason_col,
+        nullable=False,
         comment="Report reason from standard moderation categories.",
     )
-    details: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+    details: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
         comment="Free-text description provided by the reporter.",
     )
 
     # ── Admin review tracking ─────────────────────────────────────────────────
     status: Mapped[ReportStatus] = mapped_column(
-        _report_status_col, nullable=False,
+        _report_status_col,
+        nullable=False,
         server_default=text("'pending'"),
         default=ReportStatus.PENDING,
         index=True,
         comment="Report lifecycle status. Indexed: admin queries 'get all pending reports'.",
     )
-    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -228,8 +237,9 @@ class Report(Base, UUIDMixin, TimestampMixin):
             "Indexed: 'get all reports reviewed by admin X' queries."
         ),
     )
-    reviewed_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         comment=(
             "Set once, on first review. Does not change on later updates. "
             "Distinct from updated_at which tracks ANY change."
@@ -247,12 +257,12 @@ class Report(Base, UUIDMixin, TimestampMixin):
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    reporter: Mapped[Optional[User]] = relationship(
+    reporter: Mapped[User | None] = relationship(
         "User",
         back_populates="reports_filed",
         foreign_keys=[reporter_id],
     )
-    reviewer: Mapped[Optional[User]] = relationship(
+    reviewer: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[reviewed_by],
         uselist=False,
@@ -260,7 +270,7 @@ class Report(Base, UUIDMixin, TimestampMixin):
 
     # ── State transition methods ──────────────────────────────────────────────
 
-    def mark_reviewed(self, admin_id: uuid.UUID, when: Optional[datetime] = None) -> None:
+    def mark_reviewed(self, admin_id: uuid.UUID, when: datetime | None = None) -> None:
         """
         Sets reviewed_by/reviewed_at and advances status to REVIEWED if
         currently PENDING. Idempotent for reviewed_at — only sets it the
@@ -271,7 +281,7 @@ class Report(Base, UUIDMixin, TimestampMixin):
             await db.commit()
         """
         if self.reviewed_at is None:
-            self.reviewed_at = when or datetime.now(tz=timezone.utc)
+            self.reviewed_at = when or datetime.now(tz=UTC)
             self.reviewed_by = admin_id
         if self.status == ReportStatus.PENDING:
             self.status = ReportStatus.REVIEWED

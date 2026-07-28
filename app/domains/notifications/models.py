@@ -43,7 +43,7 @@ Why notifications are never deleted:
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
@@ -64,7 +64,7 @@ if TYPE_CHECKING:
 #
 # None = mandatory event (no per-user toggle, always sent).
 # Fail-open: unmapped event types are always delivered.
-NOTIFY_TYPE_MAP: dict[str, Optional[str]] = {
+NOTIFY_TYPE_MAP: dict[str, str | None] = {
     "new_message": "notify_new_message",
     "booking_update": "notify_booking_update",
     "listing_approved": "notify_listing_approved",
@@ -87,6 +87,7 @@ RELATED_TYPE_TO_PATH: dict[str, str] = {
 
 
 # ─── Notification Model ──────────────────────────────────────────────────────
+
 
 class Notification(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -143,7 +144,7 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
             "Notification type. Drives icon/color on frontend. "
             "Examples: booking_confirmed, property_approved, new_message, "
             "subscription_expiring, kyc_verified, report_resolved."
-        )
+        ),
     )
     message: Mapped[str] = mapped_column(
         String(1000),
@@ -163,7 +164,7 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Deep-link (v9.2) ─────────────────────────────────────────────────────
-    related_type: Mapped[Optional[str]] = mapped_column(
+    related_type: Mapped[str | None] = mapped_column(
         String(50),
         nullable=True,
         comment=(
@@ -173,7 +174,7 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
             "Validated in notification_service — not a PostgreSQL enum (flexible)."
         ),
     )
-    related_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    related_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
         comment=(
@@ -209,7 +210,7 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
         return self.related_type is not None and self.related_id is not None
 
     @property
-    def deep_link_path(self) -> Optional[str]:
+    def deep_link_path(self) -> str | None:
         """
         Constructs the frontend navigation path from related_type and related_id.
         Returns None if no deep-link is set.
@@ -228,7 +229,6 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
             return None
 
         return f"/{path_segment}/{self.related_id}"
-    
 
     # ── repr ──────────────────────────────────────────────────────────────────
 
@@ -243,6 +243,7 @@ class Notification(Base, UUIDMixin, CreatedAtMixin):
 
 
 # ─── UserNotificationSettings Model ─────────────────────────────────────────
+
 
 class UserNotificationSettings(Base, UUIDMixin, TimestampMixin):
     """

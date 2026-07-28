@@ -9,6 +9,7 @@ live in auth/service.py. This file only knows how to query and write
 the users table and the rows created at registration (notification
 settings, consent log).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -33,9 +34,7 @@ class AuthRepository:
         Returns None if no match -- caller decides whether that's an
         error (login: yes) or expected (registration: no, proceed).
         """
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         return result.scalar_one_or_none()
 
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
@@ -66,9 +65,7 @@ class AuthRepository:
         Used by register() to raise ConflictException before attempting
         the INSERT, producing a cleaner error than catching IntegrityError.
         """
-        result = await self.db.execute(
-            select(User.id).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User.id).where(User.email == email.lower()))
         return result.scalar_one_or_none() is not None
 
     # ── Writes ────────────────────────────────────────────────────────────────

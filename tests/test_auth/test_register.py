@@ -3,6 +3,7 @@ User registration tests.
 
 Tests user account creation via the /auth/register endpoint.
 """
+
 import pytest
 from httpx import AsyncClient
 
@@ -108,7 +109,7 @@ async def test_user_register_duplicate_email(client: AsyncClient):
             "accept_terms": True,
         },
     )
-    
+
     # Try to register again with same email
     response = await client.post(
         "/api/v1/auth/register",
@@ -156,4 +157,3 @@ async def test_user_register_invalid_role(client: AsyncClient):
         },
     )
     assert response.status_code == 422
-

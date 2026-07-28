@@ -61,18 +61,21 @@ from __future__ import annotations
 
 import enum
 import uuid
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    CheckConstraint, ForeignKey, String, Text, text,
+    CheckConstraint,
+    ForeignKey,
+    String,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin, CreatedAtMixin
+from app.db.mixins import CreatedAtMixin, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.users.models import User
@@ -80,12 +83,14 @@ if TYPE_CHECKING:
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
+
 class KycDocumentType(str, enum.Enum):
     """
     Type of identity document submitted.
     Applies to all roles, including agents.
     Stored as PostgreSQL enum for type safety (government IDs are stable).
     """
+
     NATIONAL_ID = "national_id"
     PASSPORT = "passport"
     DRIVERS_LICENSE = "drivers_license"
@@ -104,6 +109,7 @@ class KycDocumentStatus(str, enum.Enum):
     Shares the same PostgreSQL enum type name ("kyc_status") as User.kyc_status,
     but this Python enum has only 3 values (documents are always submitted).
     """
+
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -114,6 +120,7 @@ class KycReviewDecision(str, enum.Enum):
     Admin's override decision on a KycDocument. Always final (Rule 8).
     Stored as PostgreSQL enum for type safety (safety-critical decision).
     """
+
     APPROVED = "approved"
     REJECTED = "rejected"
 
@@ -129,7 +136,7 @@ _kyc_document_type_col = sa.Enum(
 # NOTE: Reuses the SAME PostgreSQL enum type as User.kyc_status (name="kyc_status").
 # Different Python enum (KycDocumentStatus, 3 values) for domain clarity.
 # KycDocumentStatus never uses "not_submitted" — documents are always submitted.
-# THE 3 ABOUT LINE IS WRONG 
+# THE 3 ABOUT LINE IS WRONG
 # BEFORE (BUG — overwrites User's kyc_status in Python dict):
 #   name="kyc_status"
 #
@@ -148,6 +155,7 @@ _kyc_review_decision_col = sa.Enum(
 
 
 # ─── KycDocument Model ───────────────────────────────────────────────────────
+
 
 class KycDocument(Base, UUIDMixin, TimestampMixin):
     """
@@ -186,11 +194,13 @@ class KycDocument(Base, UUIDMixin, TimestampMixin):
 
     # ── Document details ──────────────────────────────────────────────────────
     document_type: Mapped[KycDocumentType] = mapped_column(
-        _kyc_document_type_col, nullable=False,
+        _kyc_document_type_col,
+        nullable=False,
         comment="Type of identity document: national_id | passport | drivers_license.",
     )
     document_url: Mapped[str] = mapped_column(
-        String(512), nullable=False,
+        String(512),
+        nullable=False,
         comment=(
             "Object storage URL. Access-controlled — never publicly listable. "
             "Contains sensitive identity information."
@@ -199,7 +209,8 @@ class KycDocument(Base, UUIDMixin, TimestampMixin):
 
     # ── Status ────────────────────────────────────────────────────────────────
     status: Mapped[KycDocumentStatus] = mapped_column(
-        _kyc_document_status_col, nullable=False,
+        _kyc_document_status_col,
+        nullable=False,
         server_default=text("'pending'"),
         default=KycDocumentStatus.PENDING,
         index=True,
@@ -209,18 +220,21 @@ class KycDocument(Base, UUIDMixin, TimestampMixin):
             "NOT the user's overall kyc_status — use effective_status for that."
         ),
     )
-    rejection_reason: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True,
+    rejection_reason: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
         comment="Set by provider (or admin via KycAdminReview) when status=rejected.",
     )
 
     # ── Provider integration ──────────────────────────────────────────────────
-    provider: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+    provider: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
         comment="e.g. 'smile_identity', 'youverify'. NULL if not yet submitted.",
     )
-    provider_reference: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True,
+    provider_reference: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
         index=True,
         comment=(
             "Provider's reference/transaction ID for this verification. "
@@ -229,8 +243,9 @@ class KycDocument(Base, UUIDMixin, TimestampMixin):
             "Indexed: webhook lookup needs to be fast."
         ),
     )
-    provider_response: Mapped[Optional[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=True,
+    provider_response: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
         comment=(
             "Full raw JSON response from the provider. Stored for audit "
             "and fraud investigation — never displayed directly to the user."
@@ -297,7 +312,7 @@ class KycDocument(Base, UUIDMixin, TimestampMixin):
     # ── Computed properties: display-only ─────────────────────────────────────
 
     @property
-    def latest_admin_review(self) -> Optional[KycAdminReview]:
+    def latest_admin_review(self) -> KycAdminReview | None:
         """Most recent admin override, if any. Ordered ASC, so last is newest."""
         return self.admin_reviews[-1] if self.admin_reviews else None
 
@@ -361,6 +376,7 @@ class KycDocument(Base, UUIDMixin, TimestampMixin):
 
 # ─── KycAdminReview Model ────────────────────────────────────────────────────
 
+
 class KycAdminReview(Base, UUIDMixin, CreatedAtMixin):
     """
     An admin's override decision on a KycDocument. Always final (Rule 8).
@@ -417,11 +433,13 @@ class KycAdminReview(Base, UUIDMixin, CreatedAtMixin):
 
     # ── Decision ──────────────────────────────────────────────────────────────
     decision: Mapped[KycReviewDecision] = mapped_column(
-        _kyc_review_decision_col, nullable=False,
+        _kyc_review_decision_col,
+        nullable=False,
         comment="Admin's decision: approved | rejected. Always final (Rule 8).",
     )
     reason: Mapped[str] = mapped_column(
-        String(500), nullable=False,
+        String(500),
+        nullable=False,
         comment=(
             "Required for ALL decisions. Why the admin is overriding "
             "(or confirming) the provider result. "
@@ -431,8 +449,9 @@ class KycAdminReview(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Evidence ──────────────────────────────────────────────────────────────
-    evidence: Mapped[Optional[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=True,
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
         comment=(
             "Optional free-form supporting evidence. "
             "e.g. { 'suspicion': 'photo_mismatch', 'notes': 'Face does not match', "

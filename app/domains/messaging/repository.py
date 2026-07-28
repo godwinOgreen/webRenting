@@ -3,13 +3,13 @@ domains/messaging/repository.py
 
 Data access for conversations and messages.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,16 +26,12 @@ class MessagingRepository:
 
     # ── Conversation reads ────────────────────────────────────────────────────
 
-    async def get_conversation(
-        self, conversation_id: uuid.UUID
-    ) -> Optional[Conversation]:
+    async def get_conversation(self, conversation_id: uuid.UUID) -> Conversation | None:
         result = await self.db.execute(
             select(Conversation)
             .where(Conversation.id == conversation_id)
             .options(
-                selectinload(Conversation.participants).selectinload(
-                    ConversationParticipant.user
-                ),
+                selectinload(Conversation.participants).selectinload(ConversationParticipant.user),
                 selectinload(Conversation.messages),
             )
         )
@@ -43,7 +39,7 @@ class MessagingRepository:
 
     async def get_participant(
         self, conversation_id: uuid.UUID, user_id: uuid.UUID
-    ) -> Optional[ConversationParticipant]:
+    ) -> ConversationParticipant | None:
         result = await self.db.execute(
             select(ConversationParticipant).where(
                 ConversationParticipant.conversation_id == conversation_id,
@@ -57,7 +53,7 @@ class MessagingRepository:
         property_id: uuid.UUID,
         user_a: uuid.UUID,
         user_b: uuid.UUID,
-    ) -> Optional[Conversation]:
+    ) -> Conversation | None:
         """
         Find an existing conversation about a property between exactly
         these two users — used so re-messaging an agent about the same
@@ -78,9 +74,7 @@ class MessagingRepository:
                 Conversation.id.in_(b_convos),
             )
             .options(
-                selectinload(Conversation.participants).selectinload(
-                    ConversationParticipant.user
-                ),
+                selectinload(Conversation.participants).selectinload(ConversationParticipant.user),
                 selectinload(Conversation.listing),
             )
         )
@@ -110,19 +104,10 @@ class MessagingRepository:
             .subquery()
         )
 
-        base = (
-            select(Conversation)
-            .where(Conversation.id.in_(participant_convos))
-            .outerjoin(latest_msg, Conversation.id == latest_msg.c.conversation_id)
-        )
-
         total = (
             await self.db.execute(
-                select(func.count())
-                .select_from(
-                    select(Conversation)
-                    .where(Conversation.id.in_(participant_convos))
-                    .subquery()
+                select(func.count()).select_from(
+                    select(Conversation).where(Conversation.id.in_(participant_convos)).subquery()
                 )
             )
         ).scalar_one()
@@ -133,16 +118,10 @@ class MessagingRepository:
             .outerjoin(latest_msg, Conversation.id == latest_msg.c.conversation_id)
             .options(
                 selectinload(Conversation.listing),
-                selectinload(Conversation.participants).selectinload(
-                    ConversationParticipant.user
-                ),
+                selectinload(Conversation.participants).selectinload(ConversationParticipant.user),
                 selectinload(Conversation.messages),
             )
-            .order_by(
-                func.coalesce(
-                    latest_msg.c.last_message_at, Conversation.created_at
-                ).desc()
-            )
+            .order_by(func.coalesce(latest_msg.c.last_message_at, Conversation.created_at).desc())
             .offset((page - 1) * per_page)
             .limit(per_page)
         )
@@ -153,7 +132,7 @@ class MessagingRepository:
     async def list_messages(
         self,
         conversation_id: uuid.UUID,
-        cursor_created_at: Optional[str],
+        cursor_created_at: str | None,
         limit: int,
     ) -> list[Message]:
         """
@@ -175,7 +154,7 @@ class MessagingRepository:
 
     async def create_conversation(
         self,
-        property_id: Optional[uuid.UUID],
+        property_id: uuid.UUID | None,
         participant_ids: list[uuid.UUID],
     ) -> Conversation:
         conversation = Conversation(property_id=property_id)
@@ -183,11 +162,7 @@ class MessagingRepository:
         await self.db.flush()
 
         for uid in participant_ids:
-            self.db.add(
-                ConversationParticipant(
-                    conversation_id=conversation.id, user_id=uid
-                )
-            )
+            self.db.add(ConversationParticipant(conversation_id=conversation.id, user_id=uid))
         await self.db.flush()
         return conversation
 
@@ -206,9 +181,7 @@ class MessagingRepository:
         await self.db.flush()
         return message
 
-    async def mark_read(
-        self, participant: ConversationParticipant
-    ) -> ConversationParticipant:
+    async def mark_read(self, participant: ConversationParticipant) -> ConversationParticipant:
         participant.mark_read()  # model method, sets last_read_at = now()
         await self.db.flush()
         return participant

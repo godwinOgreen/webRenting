@@ -9,18 +9,18 @@ scroll is the natural UX, unlike page-numbered lists elsewhere.
 Conversation list uses standard PaginatedResponse — there are far fewer
 conversations than messages per user, page numbers are fine there.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domains.users.schemas import UserPublicRead
 
-
 # ── Start conversation ────────────────────────────────────────────────────────
+
 
 class StartConversationRequest(BaseModel):
     """
@@ -29,11 +29,13 @@ class StartConversationRequest(BaseModel):
     owner_id, not supplied by the client — prevents messaging an
     arbitrary user under the guise of "about this property."
     """
+
     property_id: uuid.UUID
     message: str = Field(..., min_length=1, max_length=5000)
 
 
 # ── Message ────────────────────────────────────────────────────────────────────
+
 
 class MessageCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=5000)
@@ -51,9 +53,10 @@ class MessageRead(BaseModel):
 
 # ── Conversation ──────────────────────────────────────────────────────────────
 
+
 class ConversationParticipantRead(BaseModel):
     user: UserPublicRead
-    last_read_at: Optional[datetime] = None
+    last_read_at: datetime | None = None
 
 
 class ConversationRead(BaseModel):
@@ -63,17 +66,19 @@ class ConversationRead(BaseModel):
     Conversation model's computed properties (last_message,
     unread_count_for), not raw column mapping.
     """
+
     id: uuid.UUID
-    property_id: Optional[uuid.UUID] = None
-    property_title: Optional[str] = None
-    other_participant: Optional[UserPublicRead] = None
-    last_message_preview: Optional[str] = None
-    last_message_at: Optional[datetime] = None
+    property_id: uuid.UUID | None = None
+    property_title: str | None = None
+    other_participant: UserPublicRead | None = None
+    last_message_preview: str | None = None
+    last_message_at: datetime | None = None
     unread_count: int
 
 
 class ConversationDetailRead(BaseModel):
     """Full conversation view, used when opening a thread."""
+
     id: uuid.UUID
-    property_id: Optional[uuid.UUID] = None
+    property_id: uuid.UUID | None = None
     participants: list[ConversationParticipantRead]

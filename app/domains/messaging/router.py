@@ -10,10 +10,10 @@ and reply in a thread they're already part of, and an agent is never
 gated by the renter-side subscription+KYC requirement to use messaging
 they didn't initiate.
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,7 @@ router = APIRouter(prefix="/conversations", tags=["messaging"])
 
 # ── POST /conversations ───────────────────────────────────────────────────────
 
+
 @router.post(
     "",
     response_model=SuccessResponse[ConversationDetailRead],
@@ -57,6 +58,7 @@ async def start_conversation(
 
 # ── GET /conversations ────────────────────────────────────────────────────────
 
+
 @router.get(
     "",
     response_model=PaginatedResponse[ConversationRead],
@@ -74,6 +76,7 @@ async def list_conversations(
 
 # ── GET /conversations/{id} ───────────────────────────────────────────────────
 
+
 @router.get(
     "/{conversation_id}",
     response_model=SuccessResponse[ConversationDetailRead],
@@ -85,12 +88,11 @@ async def get_conversation(
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse[ConversationDetailRead]:
     svc = MessagingService(db)
-    return SuccessResponse.ok(
-        data=await svc.get_conversation(conversation_id, current_user)
-    )
+    return SuccessResponse.ok(data=await svc.get_conversation(conversation_id, current_user))
 
 
 # ── GET /conversations/{id}/messages ──────────────────────────────────────────
+
 
 @router.get(
     "/{conversation_id}/messages",
@@ -99,7 +101,7 @@ async def get_conversation(
 )
 async def list_messages(
     conversation_id: uuid.UUID,
-    cursor: Optional[str] = Query(
+    cursor: str | None = Query(
         None, description="ISO timestamp of the oldest message already loaded"
     ),
     limit: int = Query(50, ge=1, le=100),
@@ -116,6 +118,7 @@ async def list_messages(
 
 # ── POST /conversations/{id}/messages ─────────────────────────────────────────
 
+
 @router.post(
     "/{conversation_id}/messages",
     response_model=SuccessResponse[MessageRead],
@@ -129,6 +132,4 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse[MessageRead]:
     svc = MessagingService(db)
-    return SuccessResponse.ok(
-        data=await svc.send_message(conversation_id, current_user, data.body)
-    )
+    return SuccessResponse.ok(data=await svc.send_message(conversation_id, current_user, data.body))

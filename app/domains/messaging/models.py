@@ -7,7 +7,7 @@ Tables: conversations, conversation_participants, messages
 Three models implementing the conversation-thread messaging system.
 
 Architecture:
-  Conversation             — one chat thread, optionally tied to a property 
+  Conversation             — one chat thread, optionally tied to a property
                             (through the API, a conversation always has a property_id)
   ConversationParticipant  — composite PK (conversation_id, user_id),
                              tracks last_read_at for unread counts
@@ -31,10 +31,9 @@ Flow (handled in messaging_service.py):
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-import sqlalchemy as sa
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -56,6 +55,7 @@ if TYPE_CHECKING:
 
 # ─── Conversation Model ──────────────────────────────────────────────────────
 
+
 class Conversation(Base, UUIDMixin, CreatedAtMixin):
     """
     A single chat thread. property_id is nullable — a conversation may not
@@ -64,7 +64,7 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
 
     __tablename__ = "conversations"
 
-    property_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    property_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("properties.id", ondelete="SET NULL"),
         nullable=True,
@@ -77,7 +77,7 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
 
     # ── Relationships ─────────────────────────────────────────────────────────
 
-    listing: Mapped[Optional[Property]] = relationship(
+    listing: Mapped[Property | None] = relationship(
         "Property",
         back_populates="conversations",
     )
@@ -98,11 +98,11 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
     # ── Computed / Helper Methods ─────────────────────────────────────────────
 
     @property
-    def last_message(self) -> Optional[Message]:
+    def last_message(self) -> Message | None:
         """Most recent message in the thread, or None if empty."""
         return self.messages[-1] if self.messages else None
 
-    def get_participant(self, user_id: uuid.UUID) -> Optional[ConversationParticipant]:
+    def get_participant(self, user_id: uuid.UUID) -> ConversationParticipant | None:
         """Find a specific participant's row to check/update last_read_at."""
         for p in self.participants:
             if p.user_id == user_id:
@@ -112,7 +112,7 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
     def unread_count_for(self, user_id: uuid.UUID) -> int:
         """
         Number of messages this user hasn't read yet.
-        
+
         NOTE: Iterates loaded in-memory messages. Use aggregate DB queries
         for bulk inbox listing to avoid N+1 queries.
         """
@@ -139,6 +139,7 @@ class Conversation(Base, UUIDMixin, CreatedAtMixin):
 
 
 # ─── ConversationParticipant Model ───────────────────────────────────────────
+
 
 class ConversationParticipant(Base):
     """
@@ -169,7 +170,7 @@ class ConversationParticipant(Base):
         server_default=func.now(),
         comment="When this user joined the conversation.",
     )
-    last_read_at: Mapped[Optional[datetime]] = mapped_column(
+    last_read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         comment=(
@@ -193,7 +194,7 @@ class ConversationParticipant(Base):
 
     def mark_read(self) -> None:
         """Sets last_read_at to current UTC time in memory."""
-        self.last_read_at = datetime.now(tz=timezone.utc)
+        self.last_read_at = datetime.now(tz=UTC)
 
     # ── repr ──────────────────────────────────────────────────────────────────
 
@@ -206,6 +207,7 @@ class ConversationParticipant(Base):
 
 
 # ─── Message Model ───────────────────────────────────────────────────────────
+
 
 class Message(Base, UUIDMixin, CreatedAtMixin):
     """

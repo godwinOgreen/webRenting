@@ -11,11 +11,10 @@ service's AsyncSession.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.subscriptions.models import Subscription, SubscriptionStatus
@@ -27,12 +26,10 @@ class SubscriptionRepository:
 
     # ── Reads ─────────────────────────────────────────────────────────────────
 
-    async def get_by_id(self, subscription_id: uuid.UUID) -> Optional[Subscription]:
+    async def get_by_id(self, subscription_id: uuid.UUID) -> Subscription | None:
         return await self.db.get(Subscription, subscription_id)
 
-    async def get_current_for_user(
-        self, user_id: uuid.UUID
-    ) -> Optional[Subscription]:
+    async def get_current_for_user(self, user_id: uuid.UUID) -> Subscription | None:
         """
         Most recent subscription row for a user, regardless of status.
         'Current' = latest by expires_at, not necessarily active.
@@ -45,9 +42,7 @@ class SubscriptionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_active_for_user(
-        self, user_id: uuid.UUID
-    ) -> Optional[Subscription]:
+    async def get_active_for_user(self, user_id: uuid.UUID) -> Subscription | None:
         """
         Same query used by permissions/guards.py require_subscription().
         """
@@ -65,10 +60,7 @@ class SubscriptionRepository:
     async def list_for_user(
         self, user_id: uuid.UUID, page: int, per_page: int
     ) -> tuple[list[Subscription], int]:
-        total_stmt = (
-            select(func.count(Subscription.id))
-            .where(Subscription.user_id == user_id)
-        )
+        total_stmt = select(func.count(Subscription.id)).where(Subscription.user_id == user_id)
         total = (await self.db.execute(total_stmt)).scalar_one()
 
         stmt = (
@@ -108,10 +100,12 @@ class SubscriptionRepository:
         """
         result = await self.db.execute(
             select(Subscription).where(
-                Subscription.status.in_([
-                    SubscriptionStatus.ACTIVE,
-                    SubscriptionStatus.CANCELLED,
-                ]),
+                Subscription.status.in_(
+                    [
+                        SubscriptionStatus.ACTIVE,
+                        SubscriptionStatus.CANCELLED,
+                    ]
+                ),
                 Subscription.expires_at <= func.clock_timestamp(),
             )
         )
@@ -119,11 +113,9 @@ class SubscriptionRepository:
 
     # ── Writes ────────────────────────────────────────────────────────────────
 
-    async def cancel(
-        self, subscription: Subscription, reason: Optional[str]
-    ) -> Subscription:
+    async def cancel(self, subscription: Subscription, reason: str | None) -> Subscription:
         subscription.status = SubscriptionStatus.CANCELLED
-        subscription.cancelled_at = datetime.now(tz=timezone.utc)
+        subscription.cancelled_at = datetime.now(tz=UTC)
         subscription.cancellation_reason = reason
         await self.db.flush()
         return subscription

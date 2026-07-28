@@ -24,18 +24,25 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    Boolean, Date, DateTime, ForeignKey, Integer, String, Text, text, func,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin
+from app.db.mixins import TimestampMixin, UUIDMixin
 
 # TYPE_CHECKING guard — imports exist only at type-check time (mypy/pyright).
 # At runtime, never imported. Prevents circular imports across 16 domains.
@@ -58,6 +65,7 @@ if TYPE_CHECKING:
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
+
 class UserRole(str, enum.Enum):
     """
     Top-level user role. Every user has exactly one.
@@ -66,6 +74,7 @@ class UserRole(str, enum.Enum):
     AGENT  — lists properties, receives leads, manages calendar (requires subscription)
     ADMIN  — full platform management (admin_role sub-divides access)
     """
+
     RENTER = "renter"
     AGENT = "agent"
     ADMIN = "admin"
@@ -79,6 +88,7 @@ class AdminRole(str, enum.Enum):
     ADMIN       — standard admin operations (approve listings, suspend users)
     MODERATOR   — content moderation (review flags, resolve reports)
     """
+
     SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
     MODERATOR = "moderator"
@@ -86,6 +96,7 @@ class AdminRole(str, enum.Enum):
 
 class OAuthProvider(str, enum.Enum):
     """Supported OAuth identity providers."""
+
     GOOGLE = "google"
     APPLE = "apple"
     FACEBOOK = "facebook"
@@ -103,6 +114,7 @@ class KycStatus(str, enum.Enum):
     When VERIFIED: first_name, last_name, dob are overwritten by KYC data.
     When admin overrides: override is final (Rule 8).
     """
+
     NOT_SUBMITTED = "not_submitted"
     PENDING_REVIEW = "pending_review"
     VERIFIED = "verified"
@@ -140,6 +152,7 @@ _kyc_status_col = sa.Enum(
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 
+
 class User(Base, UUIDMixin, TimestampMixin):
     """
     All platform users: renters, agents, admins, moderators.
@@ -152,58 +165,72 @@ class User(Base, UUIDMixin, TimestampMixin):
 
     # ── Core identity ─────────────────────────────────────────────────────────
     email: Mapped[str] = mapped_column(
-        String(255), nullable=False, unique=True, index=True,
+        String(255),
+        nullable=False,
+        unique=True,
+        index=True,
         comment="Stored lowercase. Unique across all user types.",
     )
     first_name: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
         comment="Overwritten by KYC provider on approval.",
     )
     last_name: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
         comment="Overwritten by KYC provider on approval.",
     )
-    dob: Mapped[Optional[date]] = mapped_column(
-        Date, nullable=True,
+    dob: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
         comment="Overwritten by KYC provider on approval.",
     )
-    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    profile_image_url: Mapped[Optional[str]] = mapped_column(
-        String(512), nullable=True,
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    profile_image_url: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
     )
 
     # ── Authentication ────────────────────────────────────────────────────────
-    password_hash: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True,
+    password_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
         comment="NULL for OAuth-only users. Never store plaintext password.",
     )
-    oauth_provider: Mapped[Optional[OAuthProvider]] = mapped_column(
-        _oauth_provider_col, nullable=True,
+    oauth_provider: Mapped[OAuthProvider | None] = mapped_column(
+        _oauth_provider_col,
+        nullable=True,
     )
-    oauth_provider_id: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True,
+    oauth_provider_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
         comment="The user's ID on the OAuth provider. Matches returning users.",
     )
 
     # ── Role & permissions ────────────────────────────────────────────────────
     role: Mapped[UserRole] = mapped_column(
-        _user_role_col, nullable=False,
+        _user_role_col,
+        nullable=False,
         server_default=text("'renter'"),
         default=UserRole.RENTER,
     )
-    admin_role: Mapped[Optional[AdminRole]] = mapped_column(
-        _admin_role_col, nullable=True,
+    admin_role: Mapped[AdminRole | None] = mapped_column(
+        _admin_role_col,
+        nullable=True,
         comment="NULL for non-admin users. Subdivides admin access level.",
     )
 
     # ── KYC & verification ────────────────────────────────────────────────────
     kyc_status: Mapped[KycStatus] = mapped_column(
-        _kyc_status_col, nullable=False,
+        _kyc_status_col,
+        nullable=False,
         server_default=text("'not_submitted'"),
         default=KycStatus.NOT_SUBMITTED,
     )
     verified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         server_default=text("false"),
         default=False,
         comment="Admin-granted verified badge. Separate from KYC.",
@@ -211,20 +238,22 @@ class User(Base, UUIDMixin, TimestampMixin):
 
     # ── Agent profile fields ──────────────────────────────────────────────────
     # Nullable for all users. Only populated when role=agent.
-    agency_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    agent_bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    license_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    years_experience: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    agency_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    agent_bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    years_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # ── Suspension ────────────────────────────────────────────────────────────
-    suspended_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    suspended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
-    suspension_reason: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True,
+    suspension_reason: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
         comment="Required when suspending. Shown to the suspended user.",
     )
-    suspended_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    suspended_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -235,7 +264,7 @@ class User(Base, UUIDMixin, TimestampMixin):
     # Resolved by SQLAlchemy at mapper init time via base_all.py.
 
     # Self-referencing: who suspended this user
-    suspending_admin: Mapped[Optional[User]] = relationship(
+    suspending_admin: Mapped[User | None] = relationship(
         "User",
         remote_side="User.id",
         foreign_keys=[suspended_by],
@@ -284,7 +313,7 @@ class User(Base, UUIDMixin, TimestampMixin):
         "Notification",
         back_populates="user",
     )
-    notification_settings: Mapped[Optional[UserNotificationSettings]] = relationship(
+    notification_settings: Mapped[UserNotificationSettings | None] = relationship(
         "UserNotificationSettings",
         back_populates="user",
         uselist=False,
@@ -419,10 +448,4 @@ class User(Base, UUIDMixin, TimestampMixin):
     # ── repr ──────────────────────────────────────────────────────────────────
 
     def __repr__(self) -> str:
-        return (
-            f"<User id={self.id} "
-            f"email={self.email!r} "
-            f"role={self.role.value!r}>"
-        )
-    
-    
+        return f"<User id={self.id} email={self.email!r} role={self.role.value!r}>"

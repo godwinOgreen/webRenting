@@ -1,4 +1,5 @@
 """Public property search and filtering."""
+
 import pytest
 from httpx import AsyncClient
 
@@ -26,7 +27,9 @@ PROPERTY_PAYLOAD = {
 async def _create_and_publish(client: AsyncClient, agent_token: str, admin_token: str) -> str:
     """Helper: create → submit → approve → publish. Returns property ID."""
     resp = await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(agent_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(agent_token),
     )
     prop_id = resp.json()["data"]["id"]
 
@@ -41,7 +44,9 @@ async def _create_and_publish(client: AsyncClient, agent_token: str, admin_token
 async def test_search_excludes_drafts(client: AsyncClient, agent_token: str):
     """Draft properties should not appear in public search."""
     await client.post(
-        "/properties", json=PROPERTY_PAYLOAD, headers=auth(agent_token),
+        "/properties",
+        json=PROPERTY_PAYLOAD,
+        headers=auth(agent_token),
     )
 
     resp = await client.get("/properties")
@@ -51,7 +56,9 @@ async def test_search_excludes_drafts(client: AsyncClient, agent_token: str):
 
 @pytest.mark.asyncio
 async def test_search_includes_published(
-    client: AsyncClient, agent_token: str, admin_token: str,
+    client: AsyncClient,
+    agent_token: str,
+    admin_token: str,
 ):
     """Published properties should appear in public search."""
     await _create_and_publish(client, agent_token, admin_token)
@@ -64,7 +71,9 @@ async def test_search_includes_published(
 
 @pytest.mark.asyncio
 async def test_search_filter_by_city(
-    client: AsyncClient, agent_token: str, admin_token: str,
+    client: AsyncClient,
+    agent_token: str,
+    admin_token: str,
 ):
     await _create_and_publish(client, agent_token, admin_token)
 
@@ -79,7 +88,9 @@ async def test_search_filter_by_city(
 
 @pytest.mark.asyncio
 async def test_search_filter_by_price_range(
-    client: AsyncClient, agent_token: str, admin_token: str,
+    client: AsyncClient,
+    agent_token: str,
+    admin_token: str,
 ):
     await _create_and_publish(client, agent_token, admin_token)
 
@@ -92,7 +103,9 @@ async def test_search_filter_by_price_range(
 
 @pytest.mark.asyncio
 async def test_search_filter_by_property_type(
-    client: AsyncClient, agent_token: str, admin_token: str,
+    client: AsyncClient,
+    agent_token: str,
+    admin_token: str,
 ):
     await _create_and_publish(client, agent_token, admin_token)
 
@@ -111,13 +124,17 @@ async def test_search_invalid_property_type(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_search_pagination(
-    client: AsyncClient, agent_token: str, admin_token: str,
+    client: AsyncClient,
+    agent_token: str,
+    admin_token: str,
 ):
     # Create 3 published properties
     for i in range(3):
         payload = {**PROPERTY_PAYLOAD, "title": f"Property Listing Number {i}"}
         resp = await client.post(
-            "/properties", json=payload, headers=auth(agent_token),
+            "/properties",
+            json=payload,
+            headers=auth(agent_token),
         )
         pid = resp.json()["data"]["id"]
         await client.post(f"/properties/{pid}/submit", headers=auth(agent_token))
@@ -137,7 +154,9 @@ async def test_search_pagination(
 
 @pytest.mark.asyncio
 async def test_search_returns_card_format(
-    client: AsyncClient, agent_token: str, admin_token: str,
+    client: AsyncClient,
+    agent_token: str,
+    admin_token: str,
 ):
     await _create_and_publish(client, agent_token, admin_token)
 

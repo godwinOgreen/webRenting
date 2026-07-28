@@ -13,11 +13,11 @@ UserNotificationSettings schemas already exist in domains/users/schemas.py
 are naturally part of a user's profile — this domain only owns the
 Notification model (the inbox itself), not the settings model.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -26,8 +26,8 @@ class NotificationRead(BaseModel):
     id: uuid.UUID
     type: str
     message: str
-    related_type: Optional[str] = None
-    related_id: Optional[uuid.UUID] = None
+    related_type: str | None = None
+    related_id: uuid.UUID | None = None
     is_read: bool
     created_at: datetime
 
@@ -40,4 +40,5 @@ class UnreadCountRead(BaseModel):
     count, not the full list. Polled frequently by the frontend, so
     kept minimal on purpose.
     """
+
     count: int

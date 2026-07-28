@@ -12,6 +12,7 @@ Endpoints:
   GET  /users/{id}                   -- public profile of any user
   GET  /agents                       -- paginated public agent directory
 """
+
 from __future__ import annotations
 
 import uuid
@@ -38,6 +39,7 @@ agents_router = APIRouter(prefix="/agents", tags=["agents"])
 
 # ── GET /users/me ─────────────────────────────────────────────────────────────
 
+
 @router.get(
     "/me",
     response_model=SuccessResponse[UserRead],
@@ -53,6 +55,7 @@ async def get_me(
 
 
 # ── PATCH /users/me ───────────────────────────────────────────────────────────
+
 
 @router.patch(
     "/me",
@@ -74,6 +77,7 @@ async def update_me(
 
 # ── GET /users/me/notifications ───────────────────────────────────────────────
 
+
 @router.get(
     "/me/notifications",
     response_model=SuccessResponse[NotificationSettingsRead],
@@ -85,12 +89,11 @@ async def get_notification_settings(
 ) -> SuccessResponse[NotificationSettingsRead]:
     """Return the authenticated user's notification preferences."""
     svc = UserService(db)
-    return SuccessResponse.ok(
-        data=await svc.get_notification_settings(current_user)
-    )
+    return SuccessResponse.ok(data=await svc.get_notification_settings(current_user))
 
 
 # ── PATCH /users/me/notifications ─────────────────────────────────────────────
+
 
 @router.patch(
     "/me/notifications",
@@ -112,6 +115,7 @@ async def update_notification_settings(
 
 # ── GET /agents ───────────────────────────────────────────────────────────────
 
+
 @agents_router.get(
     "",
     response_model=PaginatedResponse[AgentPublicRead],
@@ -129,6 +133,7 @@ async def list_agents(
 
 
 # ── GET /users/{id} ───────────────────────────────────────────────────────────
+
 
 @router.get(
     "/{user_id}",

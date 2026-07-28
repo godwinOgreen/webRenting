@@ -16,6 +16,7 @@ The KYC-overwritten fields (first_name, last_name, dob) are in UserRead
 because the authenticated user should see their own verified data. They
 are NOT in UserPublicRead -- DoB is personal data that is never public.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -23,11 +24,12 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ── Self-view (authenticated user reading own profile) ────────────────────────
+
 
 class UserRead(BaseModel):
     """Full self-view of the authenticated user's profile."""
+
     id: uuid.UUID
     email: str
     first_name: str
@@ -51,11 +53,13 @@ class UserRead(BaseModel):
 
 # ── Public view (anyone viewing another user) ─────────────────────────────────
 
+
 class UserPublicRead(BaseModel):
     """
     Safe public view. Email, DoB, KYC status, and suspension details
     are hidden -- personal data not suitable for public exposure.
     """
+
     id: uuid.UUID
     first_name: str
     last_name: str
@@ -71,12 +75,14 @@ class AgentPublicRead(UserPublicRead):
     Extended public profile for agents. Shown on listing detail pages
     and the agent directory. Adds professional profile fields.
     """
+
     agency_name: str | None = None
     agent_bio: str | None = None
     years_experience: int | None = None
 
 
 # ── Update ────────────────────────────────────────────────────────────────────
+
 
 class UserUpdate(BaseModel):
     """
@@ -90,6 +96,7 @@ class UserUpdate(BaseModel):
     Allowing post-KYC edits would silently diverge the profile from the
     verified identity -- which defeats the point of KYC entirely.
     """
+
     phone: str | None = Field(None, max_length=20)
     profile_image_url: str | None = Field(None, max_length=512)
     # Agent-only fields -- silently ignored for renters in the service
@@ -103,8 +110,10 @@ class UserUpdate(BaseModel):
 
 # ── Notification settings ─────────────────────────────────────────────────────
 
+
 class NotificationSettingsRead(BaseModel):
     """Current notification preferences for the authenticated user."""
+
     email_enabled: bool
     push_enabled: bool
     sms_enabled: bool
@@ -125,6 +134,7 @@ class NotificationSettingsUpdate(BaseModel):
     Partial update -- only supplied fields are changed.
     All fields are Optional so the client can send a single-field PATCH.
     """
+
     email_enabled: bool | None = None
     push_enabled: bool | None = None
     sms_enabled: bool | None = None

@@ -4,6 +4,7 @@ domains/users/service.py
 Business logic for the users domain. Orchestrates UserRepository
 and enforces domain rules. No direct DB queries, no HTTP concerns.
 """
+
 from __future__ import annotations
 
 import logging
@@ -93,9 +94,7 @@ class UserService:
 
     # ── Notification settings ─────────────────────────────────────────────────
 
-    async def get_notification_settings(
-        self, user: User
-    ) -> NotificationSettingsRead:
+    async def get_notification_settings(self, user: User) -> NotificationSettingsRead:
         """Fetch the authenticated user's notification settings."""
         settings = await self.repo.get_notification_settings(user.id)
         if settings is None:

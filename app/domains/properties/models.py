@@ -26,21 +26,29 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric,
-    String, Text, UniqueConstraint, text, func,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin, CreatedAtMixin
+from app.db.mixins import CreatedAtMixin, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.analytics.models import PropertyAnalytics
@@ -48,14 +56,16 @@ if TYPE_CHECKING:
     from app.domains.media.models import PropertyImage, VirtualTour
     from app.domains.messaging.models import Conversation
     from app.domains.reviews.models import Review
-    from app.domains.search.models import Favorite, SavedSearch, SearchHistory
+    from app.domains.search.models import Favorite
     from app.domains.users.models import User
 
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
+
 class PropertyType(str, enum.Enum):
     """Physical type of the property."""
+
     APARTMENT = "apartment"
     HOUSE = "house"
     DUPLEX = "duplex"
@@ -69,6 +79,7 @@ class ListingStatus(str, enum.Enum):
     What the agent is offering the property for.
     Set at creation time. Does not change through the approval lifecycle.
     """
+
     RENT = "rent"
     SALE = "sale"
     SHORT_LET = "short_let"
@@ -119,6 +130,7 @@ class ApprovalStatus(str, enum.Enum):
       SUSPENDED       → ARCHIVED        (admin archives)
       ARCHIVED        → PENDING_REVIEW  (agent republishes)
     """
+
     DRAFT = "draft"
     PENDING_REVIEW = "pending_review"
     APPROVED = "approved"
@@ -141,6 +153,7 @@ class FeatureCategory(str, enum.Enum):
       building  → Balcony, Garden, Elevator, Swimming Pool, Gym
       security  → Security Guard, CCTV, Gated Estate, Intercom
     """
+
     AMENITIES = "amenities"
     RULES = "rules"
     BUILDING = "building"
@@ -176,6 +189,7 @@ _feature_category_col = sa.Enum(
 
 # ─── Property Model ──────────────────────────────────────────────────────────
 
+
 class Property(Base, UUIDMixin, TimestampMixin):
     """
     Core listing model. The most field-heavy model in the platform.
@@ -201,7 +215,7 @@ class Property(Base, UUIDMixin, TimestampMixin):
         index=True,
         comment="The agent who created this listing.",
     )
-    rented_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    rented_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -210,46 +224,54 @@ class Property(Base, UUIDMixin, TimestampMixin):
 
     # ── Core listing fields ───────────────────────────────────────────────────
     title: Mapped[str] = mapped_column(String(300), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(
-        Numeric(15, 2), nullable=False,
+        Numeric(15, 2),
+        nullable=False,
         comment="Always positive — enforced by chk_price CHECK constraint.",
     )
     currency: Mapped[str] = mapped_column(
-        String(3), nullable=False,
+        String(3),
+        nullable=False,
         server_default=text("'NGN'"),
         default="NGN",
     )
     property_type: Mapped[PropertyType] = mapped_column(
-        _property_type_col, nullable=False,
+        _property_type_col,
+        nullable=False,
     )
     status: Mapped[ListingStatus] = mapped_column(
-        _listing_status_col, nullable=False,
+        _listing_status_col,
+        nullable=False,
         comment="What the agent is offering: rent, sale, short_let, lease.",
     )
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
     approval_status: Mapped[ApprovalStatus] = mapped_column(
-        _approval_status_col, nullable=False,
+        _approval_status_col,
+        nullable=False,
         server_default=text("'draft'"),
         default=ApprovalStatus.DRAFT,
         index=True,
     )
-    rejection_reason: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True,
+    rejection_reason: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
         comment="Set by admin when rejecting. Required when approval_status=rejected.",
     )
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    rented_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    rented_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         comment="Stamped when agent marks property as rented.",
     )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
         index=True,
         comment=(
             "Set to now() + 30 days when published (Decision 4). "
@@ -258,21 +280,24 @@ class Property(Base, UUIDMixin, TimestampMixin):
     )
 
     # ── Address ───────────────────────────────────────────────────────────────
-    street: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
-    building_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    formatted_address: Mapped[Optional[str]] = mapped_column(
-        String(512), nullable=True,
+    street: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    building_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    formatted_address: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
         comment="Cached from Google Geocoding API. Not fetched on every request.",
     )
     city: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     state: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     latitude: Mapped[float] = mapped_column(
-        DOUBLE_PRECISION, nullable=False,
+        DOUBLE_PRECISION,
+        nullable=False,
         comment="Used for PostGIS radius search and Google Places API nearby lookup.",
     )
     longitude: Mapped[float] = mapped_column(DOUBLE_PRECISION, nullable=False)
     address_hidden: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         server_default=text("false"),
         default=False,
         comment=(
@@ -282,24 +307,27 @@ class Property(Base, UUIDMixin, TimestampMixin):
     )
 
     # ── Physical details ──────────────────────────────────────────────────────
-    bedrooms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    bathrooms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    master_bedrooms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    toilets: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    area_size: Mapped[Optional[Decimal]] = mapped_column(
-        Numeric(10, 2), nullable=True,
+    bedrooms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bathrooms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    master_bedrooms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    toilets: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    area_size: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2),
+        nullable=True,
         comment="Floor area in square metres.",
     )
 
     # ── Promotion flags ───────────────────────────────────────────────────────
     featured: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         server_default=text("false"),
         default=False,
         comment="Admin-set. Featured listings appear in promoted slots.",
     )
     verified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         server_default=text("false"),
         default=False,
         comment="Admin-set. Shows a verified badge on the listing.",
@@ -342,12 +370,12 @@ class Property(Base, UUIDMixin, TimestampMixin):
         back_populates="properties",
         foreign_keys=[owner_id],
     )
-    rented_by_user: Mapped[Optional[User]] = relationship(
+    rented_by_user: Mapped[User | None] = relationship(
         "User",
         back_populates="rented_properties",
         foreign_keys=[rented_by_user_id],
     )
-    approved_by_admin: Mapped[Optional[User]] = relationship(
+    approved_by_admin: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[approved_by],
         uselist=False,
@@ -432,7 +460,7 @@ class Property(Base, UUIDMixin, TimestampMixin):
         """Python: property.is_expired"""
         if self.expires_at is None:
             return False
-        return datetime.now(tz=timezone.utc) > self.expires_at
+        return datetime.now(tz=UTC) > self.expires_at
 
     @is_expired.expression
     def is_expired(cls):
@@ -469,11 +497,11 @@ class Property(Base, UUIDMixin, TimestampMixin):
     # ── Computed properties: display-only ─────────────────────────────────────
 
     @property
-    def days_until_expiry(self) -> Optional[int]:
+    def days_until_expiry(self) -> int | None:
         """Days remaining before this listing expires. None if no expiry set."""
         if self.expires_at is None:
             return None
-        delta = self.expires_at - datetime.now(tz=timezone.utc)
+        delta = self.expires_at - datetime.now(tz=UTC)
         return max(0, delta.days)
 
     @property
@@ -492,7 +520,7 @@ class Property(Base, UUIDMixin, TimestampMixin):
         return ", ".join(parts)
 
     @property
-    def primary_image(self) -> Optional[PropertyImage]:
+    def primary_image(self) -> PropertyImage | None:
         """Returns the primary image, or first image if none marked primary."""
         for img in self.images:
             if img.is_primary:
@@ -502,14 +530,11 @@ class Property(Base, UUIDMixin, TimestampMixin):
     # ── repr ──────────────────────────────────────────────────────────────────
 
     def __repr__(self) -> str:
-        return (
-            f"<Property id={self.id} "
-            f"title={self.title!r} "
-            f"status={self.approval_status.value!r}>"
-        )
+        return f"<Property id={self.id} title={self.title!r} status={self.approval_status.value!r}>"
 
 
 # ─── PropertyFeature Model ──────────────────────────────────────────────────
+
 
 class PropertyFeature(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -528,15 +553,19 @@ class PropertyFeature(Base, UUIDMixin, CreatedAtMixin):
     __tablename__ = "property_features"
 
     name: Mapped[str] = mapped_column(
-        String(100), nullable=False, unique=True,
+        String(100),
+        nullable=False,
+        unique=True,
         comment="e.g. 'Furnished', 'Swimming Pool', 'CCTV'. Must be unique.",
     )
-    icon: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+    icon: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
         comment="Emoji or icon name for frontend display. e.g. '🏊' or 'swimming-pool'.",
     )
     category: Mapped[FeatureCategory] = mapped_column(
-        _feature_category_col, nullable=False,
+        _feature_category_col,
+        nullable=False,
         index=True,
         comment="Groups features in UI: amenities | rules | building | security.",
     )
@@ -549,14 +578,11 @@ class PropertyFeature(Base, UUIDMixin, CreatedAtMixin):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<PropertyFeature "
-            f"name={self.name!r} "
-            f"category={self.category.value!r}>"
-        )
+        return f"<PropertyFeature name={self.name!r} category={self.category.value!r}>"
 
 
 # ─── PropertyFeatureMap Model ────────────────────────────────────────────────
+
 
 class PropertyFeatureMap(Base):
     """
@@ -586,8 +612,4 @@ class PropertyFeatureMap(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<PropertyFeatureMap "
-            f"property_id={self.property_id} "
-            f"feature_id={self.feature_id}>"
-        )
+        return f"<PropertyFeatureMap property_id={self.property_id} feature_id={self.feature_id}>"

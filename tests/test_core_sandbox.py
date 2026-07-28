@@ -8,30 +8,22 @@ Usage:
     cd C:\\Users\\godwi\\Documents\\webRenting
     python tests/test_core_sandbox.py
 """
+
 from __future__ import annotations
 
 import asyncio
 import sys
 import uuid
-from datetime import datetime, timezone
-from types import SimpleNamespace
-from typing import Optional
-
 from pathlib import Path
+from types import SimpleNamespace
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import selectors
 import sys
 
 # Windows: psycopg 3 requires SelectorEventLoop, not ProactorEventLoop
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from app.permissions.guards import (
-    require_role,
-    #require_admin_level,
-    require_kyc,
-    #equire_verified,
-    )
 
 _pass = 0
 _fail = 0
@@ -66,11 +58,13 @@ def section(title: str):
 #  1. CONFIG
 # =====================================================================
 
+
 def test_config():
     section("1. CONFIG (core/config.py)")
 
     try:
         from app.core.config import settings
+
         ok("Settings imported")
     except Exception as e:
         fail("Settings import", str(e))
@@ -108,19 +102,20 @@ def test_config():
 #  2. EXCEPTIONS
 # =====================================================================
 
+
 def test_exceptions():
     section("2. EXCEPTIONS (core/exceptions.py)")
 
     from app.core.exceptions import (
         BaseAppException,
-        ValidationException,
-        UnauthorizedException,
-        PaymentException,
+        ConflictException,
         ForbiddenException,
         KYCException,
         NotFoundException,
-        ConflictException,
+        PaymentException,
         RateLimitException,
+        UnauthorizedException,
+        ValidationException,
     )
 
     status_map = {
@@ -140,8 +135,10 @@ def test_exceptions():
         if exc.status_code == expected_code:
             ok(f"{exc_cls.__name__}.status_code = {expected_code}")
         else:
-            fail(f"{exc_cls.__name__}.status_code",
-                 f"expected {expected_code}, got {exc.status_code}")
+            fail(
+                f"{exc_cls.__name__}.status_code",
+                f"expected {expected_code}, got {exc.status_code}",
+            )
 
     exc = ValidationException(
         message="bad data",
@@ -179,20 +176,21 @@ def test_exceptions():
 #  3. SECURITY
 # =====================================================================
 
+
 def test_security():
     section("3. SECURITY (core/security.py)")
 
     from app.core.security import (
-        hash_password,
-        verify_password,
+        InvalidTokenError,
+        TokenError,
+        TokenExpiredError,
+        TokenType,
         create_access_token,
         create_refresh_token,
         decode_token,
         get_subject_from_token,
-        TokenType,
-        TokenExpiredError,
-        InvalidTokenError,
-        TokenError,
+        hash_password,
+        verify_password,
     )
 
     # Password hashing
@@ -314,16 +312,16 @@ def test_security():
 #  4. DATABASE SESSION
 # =====================================================================
 
+
 def test_database():
     section("4. DATABASE (app/db/session.py)")
 
     try:
         from app.db.session import (
-            engine,
-            async_session_factory,
-            get_db,
             DATABASE_URL,
+            engine,
         )
+
         ok("Session imports OK")
     except Exception as e:
         fail("Session imports", str(e))
@@ -346,8 +344,9 @@ async def test_database_connectivity():
     section("5. DATABASE CONNECTIVITY")
 
     try:
-        from app.db.session import engine, async_session_factory
         from sqlalchemy import text
+
+        from app.db.session import async_session_factory
 
         async with async_session_factory() as session:
             result = await session.execute(text("SELECT 1"))
@@ -357,38 +356,37 @@ async def test_database_connectivity():
             else:
                 fail("SELECT 1", f"unexpected result: {val}")
 
-            result = await session.execute(text(
-                "SELECT count(*) FROM information_schema.tables "
-                "WHERE table_schema = 'public'"
-            ))
+            result = await session.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
+            )
             count = result.scalar()
             if count >= 27:
                 ok(f"Table count: {count} (expected >= 27)")
             else:
                 fail("Table count", f"expected >= 27, got {count}")
 
-            result = await session.execute(text(
-                "SELECT count(*) FROM pg_type WHERE typtype = 'e'"
-            ))
+            result = await session.execute(text("SELECT count(*) FROM pg_type WHERE typtype = 'e'"))
             enum_count = result.scalar()
             if enum_count >= 21:
                 ok(f"Enum types: {enum_count} (expected >= 21)")
             else:
                 fail("Enum types", f"expected >= 21, got {enum_count}")
 
-            result = await session.execute(text(
-                "SELECT count(*) FROM information_schema.triggers "
-                "WHERE trigger_name = 'set_updated_at'"
-            ))
+            result = await session.execute(
+                text(
+                    "SELECT count(*) FROM information_schema.triggers "
+                    "WHERE trigger_name = 'set_updated_at'"
+                )
+            )
             trigger_count = result.scalar()
             if trigger_count >= 10:
                 ok(f"updated_at triggers: {trigger_count} (expected >= 10)")
             else:
                 fail("updated_at triggers", f"expected >= 10, got {trigger_count}")
 
-            result = await session.execute(text(
-                "SELECT extname FROM pg_extension WHERE extname = 'postgis'"
-            ))
+            result = await session.execute(
+                text("SELECT extname FROM pg_extension WHERE extname = 'postgis'")
+            )
             ext = result.scalar_one_or_none()
             if ext == "postgis":
                 ok("PostGIS extension active")
@@ -403,16 +401,17 @@ async def test_database_connectivity():
 #  6. REDIS
 # =====================================================================
 
+
 async def test_redis():
     section("6. REDIS (core/redis_client.py)")
 
     try:
         from app.core.redis_client import (
-            redis_client,
             RedisKeys,
             connect_redis,
-            disconnect_redis,
+            redis_client,
         )
+
         ok("Redis client imports OK")
     except Exception as e:
         fail("Redis imports", str(e))
@@ -420,7 +419,7 @@ async def test_redis():
 
     try:
         await connect_redis()
-        ok(f"Redis connected")
+        ok("Redis connected")
     except Exception as e:
         fail("Redis connect", str(e))
         return
@@ -492,11 +491,11 @@ async def test_redis():
 
     for i in range(8):
         pipe = redis_client.pipeline()
-        pipe.zcard(rate_key)                        # count BEFORE adding
-        pipe.zadd(rate_key, {str(i): float(i)})     # add this request
-        pipe.expire(rate_key, 60)                    # auto-cleanup
-        results = await pipe.execute()               # single await
-        count = results[0]                           # zcard result
+        pipe.zcard(rate_key)  # count BEFORE adding
+        pipe.zadd(rate_key, {str(i): float(i)})  # add this request
+        pipe.expire(rate_key, 60)  # auto-cleanup
+        results = await pipe.execute()  # single await
+        count = results[0]  # zcard result
         if count < 5:
             allowed_count += 1
         else:
@@ -517,61 +516,98 @@ async def test_redis():
 #  7. PERMISSIONS / ROLES
 # =====================================================================
 
+
 def test_roles():
     section("7. PERMISSIONS / ROLES (permissions/roles.py)")
 
     from app.domains.users.models import AdminRole, UserRole
     from app.permissions.roles import (
         _ADMIN_HIERARCHY,
-        is_renter, is_agent, is_admin,
-        is_moderator, is_standard_admin, is_super_admin,
-        can_moderate, can_manage_users, can_manage_platform,
+        can_manage_platform,
+        can_manage_users,
+        can_moderate,
         display_role,
+        is_admin,
+        is_agent,
+        is_moderator,
+        is_renter,
+        is_standard_admin,
+        is_super_admin,
     )
 
     ok("roles.py imports OK")
 
     users = {
         "renter": SimpleNamespace(
-            role=UserRole.RENTER, admin_role=None,
-            first_name="R", last_name="User", email="r@test.com",
+            role=UserRole.RENTER,
+            admin_role=None,
+            first_name="R",
+            last_name="User",
+            email="r@test.com",
         ),
         "agent": SimpleNamespace(
-            role=UserRole.AGENT, admin_role=None,
-            first_name="A", last_name="User", email="a@test.com",
+            role=UserRole.AGENT,
+            admin_role=None,
+            first_name="A",
+            last_name="User",
+            email="a@test.com",
         ),
         "admin": SimpleNamespace(
-            role=UserRole.ADMIN, admin_role=AdminRole.ADMIN,
-            first_name="Ad", last_name="User", email="ad@test.com",
+            role=UserRole.ADMIN,
+            admin_role=AdminRole.ADMIN,
+            first_name="Ad",
+            last_name="User",
+            email="ad@test.com",
         ),
         "moderator": SimpleNamespace(
-            role=UserRole.ADMIN, admin_role=AdminRole.MODERATOR,
-            first_name="Mod", last_name="User", email="mod@test.com",
+            role=UserRole.ADMIN,
+            admin_role=AdminRole.MODERATOR,
+            first_name="Mod",
+            last_name="User",
+            email="mod@test.com",
         ),
         "super_admin": SimpleNamespace(
-            role=UserRole.ADMIN, admin_role=AdminRole.SUPER_ADMIN,
-            first_name="SA", last_name="User", email="sa@test.com",
+            role=UserRole.ADMIN,
+            admin_role=AdminRole.SUPER_ADMIN,
+            first_name="SA",
+            last_name="User",
+            email="sa@test.com",
         ),
     }
 
     tests = [
-        (is_renter, "renter", True), (is_renter, "agent", False), (is_renter, "admin", False),
-        (is_agent, "renter", False), (is_agent, "agent", True), (is_agent, "admin", False),
-        (is_admin, "renter", False), (is_admin, "admin", True), (is_admin, "moderator", True),
+        (is_renter, "renter", True),
+        (is_renter, "agent", False),
+        (is_renter, "admin", False),
+        (is_agent, "renter", False),
+        (is_agent, "agent", True),
+        (is_agent, "admin", False),
+        (is_admin, "renter", False),
+        (is_admin, "admin", True),
+        (is_admin, "moderator", True),
         (is_admin, "super_admin", True),
-        (is_moderator, "admin", False), (is_moderator, "moderator", True),
+        (is_moderator, "admin", False),
+        (is_moderator, "moderator", True),
         (is_moderator, "super_admin", False),
-        (is_standard_admin, "admin", True), (is_standard_admin, "moderator", False),
+        (is_standard_admin, "admin", True),
+        (is_standard_admin, "moderator", False),
         (is_standard_admin, "super_admin", False),
-        (is_super_admin, "admin", False), (is_super_admin, "moderator", False),
+        (is_super_admin, "admin", False),
+        (is_super_admin, "moderator", False),
         (is_super_admin, "super_admin", True),
-        (can_moderate, "renter", False), (can_moderate, "agent", False),
-        (can_moderate, "admin", True), (can_moderate, "moderator", True),
+        (can_moderate, "renter", False),
+        (can_moderate, "agent", False),
+        (can_moderate, "admin", True),
+        (can_moderate, "moderator", True),
         (can_moderate, "super_admin", True),
-        (can_manage_users, "renter", False), (can_manage_users, "moderator", False),
-        (can_manage_users, "admin", True), (can_manage_users, "super_admin", True),
-        (can_manage_platform, "renter", False), (can_manage_platform, "moderator", False),
-        (can_manage_platform, "admin", False), (can_manage_platform, "super_admin", True),
+        (can_manage_users, "renter", False),
+        (can_manage_users, "moderator", False),
+        (can_manage_users, "admin", True),
+        (can_manage_users, "super_admin", True),
+        (can_manage_platform, "renter", False),
+        (can_manage_platform, "moderator", False),
+        (can_manage_platform, "admin", False),
+        (can_manage_platform, "super_admin", True),
     ]
 
     for pred, user_key, expected in tests:
@@ -605,16 +641,13 @@ def test_roles():
 #  8. PERMISSIONS / GUARDS
 # =====================================================================
 
+
 async def test_guards():
     section("8. PERMISSIONS / GUARDS (permissions/guards.py)")
 
-    from app.domains.users.models import AdminRole, KycStatus, UserRole
     from app.core.exceptions import ForbiddenException, KYCException
+    from app.domains.users.models import AdminRole, KycStatus, UserRole
     from app.permissions.guards import (
-        require_role,
-        require_kyc,
-        require_moderator,
-        require_super_admin,
         require_agent,
     )
 
@@ -629,27 +662,29 @@ async def test_guards():
                 error_code="insufficient_role",
             )
         return user
-    
+
     async def test_moderator_guard(user):
         """Directly test require_moderator logic without FastAPI."""
         from app.permissions.roles import can_moderate
+
         if not can_moderate(user):
             raise ForbiddenException(
                 message="Moderation privileges are required for this action",
                 error_code="insufficient_role",
             )
         return user
-    
+
     async def test_super_admin_guard(user):
         """Directly test require_super_admin logic without FastAPI."""
         from app.permissions.roles import can_manage_platform
+
         if not can_manage_platform(user):
             raise ForbiddenException(
                 message="Super admin privileges are required for this action",
                 error_code="insufficient_role",
             )
         return user
-    
+
     async def test_kyc_guard(user):
         """Directly test require_kyc logic without FastAPI."""
         if user.kyc_status == KycStatus.VERIFIED:
@@ -671,24 +706,44 @@ async def test_guards():
 
     # -- Mock users --
     renter = SimpleNamespace(
-        id=uuid.uuid4(), role=UserRole.RENTER, admin_role=None,
-        kyc_status=KycStatus.VERIFIED, verified=True, suspended_at=None,
+        id=uuid.uuid4(),
+        role=UserRole.RENTER,
+        admin_role=None,
+        kyc_status=KycStatus.VERIFIED,
+        verified=True,
+        suspended_at=None,
     )
     agent = SimpleNamespace(
-        id=uuid.uuid4(), role=UserRole.AGENT, admin_role=None,
-        kyc_status=KycStatus.VERIFIED, verified=True, suspended_at=None,
+        id=uuid.uuid4(),
+        role=UserRole.AGENT,
+        admin_role=None,
+        kyc_status=KycStatus.VERIFIED,
+        verified=True,
+        suspended_at=None,
     )
     admin = SimpleNamespace(
-        id=uuid.uuid4(), role=UserRole.ADMIN, admin_role=AdminRole.ADMIN,
-        kyc_status=KycStatus.VERIFIED, verified=True, suspended_at=None,
+        id=uuid.uuid4(),
+        role=UserRole.ADMIN,
+        admin_role=AdminRole.ADMIN,
+        kyc_status=KycStatus.VERIFIED,
+        verified=True,
+        suspended_at=None,
     )
     mod = SimpleNamespace(
-        id=uuid.uuid4(), role=UserRole.ADMIN, admin_role=AdminRole.MODERATOR,
-        kyc_status=KycStatus.VERIFIED, verified=True, suspended_at=None,
+        id=uuid.uuid4(),
+        role=UserRole.ADMIN,
+        admin_role=AdminRole.MODERATOR,
+        kyc_status=KycStatus.VERIFIED,
+        verified=True,
+        suspended_at=None,
     )
     super_admin = SimpleNamespace(
-        id=uuid.uuid4(), role=UserRole.ADMIN, admin_role=AdminRole.SUPER_ADMIN,
-        kyc_status=KycStatus.VERIFIED, verified=True, suspended_at=None,
+        id=uuid.uuid4(),
+        role=UserRole.ADMIN,
+        admin_role=AdminRole.SUPER_ADMIN,
+        kyc_status=KycStatus.VERIFIED,
+        verified=True,
+        suspended_at=None,
     )
 
     # -- require_role: should pass --
@@ -767,16 +822,20 @@ async def test_guards():
 
     # -- require_kyc (Depends callable pattern) --
     kyc_verified = SimpleNamespace(
-        id=uuid.uuid4(), kyc_status=KycStatus.VERIFIED,
+        id=uuid.uuid4(),
+        kyc_status=KycStatus.VERIFIED,
     )
     kyc_none = SimpleNamespace(
-        id=uuid.uuid4(), kyc_status=KycStatus.NOT_SUBMITTED,
+        id=uuid.uuid4(),
+        kyc_status=KycStatus.NOT_SUBMITTED,
     )
     kyc_pending = SimpleNamespace(
-        id=uuid.uuid4(), kyc_status=KycStatus.PENDING_REVIEW,
+        id=uuid.uuid4(),
+        kyc_status=KycStatus.PENDING_REVIEW,
     )
     kyc_rejected = SimpleNamespace(
-        id=uuid.uuid4(), kyc_status=KycStatus.REJECTED,
+        id=uuid.uuid4(),
+        kyc_status=KycStatus.REJECTED,
     )
 
     try:
@@ -798,8 +857,7 @@ async def test_guards():
             if e.error_code == expected_code:
                 ok(f"require_kyc({user.kyc_status.value}) -> KYCException({expected_code})")
             else:
-                fail("require_kyc error_code",
-                     f"expected {expected_code}, got {e.error_code}")
+                fail("require_kyc error_code", f"expected {expected_code}, got {e.error_code}")
 
     # -- require_agent (composite guard) --
     try:
@@ -813,6 +871,7 @@ async def test_guards():
 #  9. DEPENDENCIES
 # =====================================================================
 
+
 def test_dependencies():
     section("9. DEPENDENCIES (core/dependencies.py) -- import check")
 
@@ -820,8 +879,8 @@ def test_dependencies():
         from app.core.dependencies import (
             get_current_user,
             get_optional_user,
-            _bearer_scheme,
         )
+
         ok("dependencies.py imports OK")
         ok(f"get_current_user: {get_current_user.__name__}")
         ok(f"get_optional_user: {get_optional_user.__name__}")
@@ -833,17 +892,19 @@ def test_dependencies():
 #  10. MAIN APP
 # =====================================================================
 
+
 async def test_main_app():
     section("10. MAIN APP (main.py)")
 
     try:
-        from httpx import AsyncClient, ASGITransport
+        from httpx import ASGITransport, AsyncClient
     except ImportError:
         skip("main.py tests", "httpx not installed -- pip install httpx")
         return
 
     try:
         from app.main import app
+
         ok("app imported from main.py")
     except Exception as e:
         fail("app import", str(e))
@@ -851,7 +912,6 @@ async def test_main_app():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-
         # Health check
         try:
             r = await client.get("/health")
@@ -906,6 +966,7 @@ async def test_main_app():
 # =====================================================================
 #  RUNNER
 # =====================================================================
+
 
 async def main():
     print("=" * 56)

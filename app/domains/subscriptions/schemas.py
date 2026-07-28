@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,8 +35,8 @@ class SubscriptionRead(BaseModel):
     status: SubscriptionStatus
     started_at: datetime
     expires_at: datetime
-    cancelled_at: Optional[datetime] = None
-    cancellation_reason: Optional[str] = None
+    cancelled_at: datetime | None = None
+    cancellation_reason: str | None = None
 
     # Mapped from model @property / @hybrid_property methods
     is_active: bool
@@ -73,7 +72,7 @@ class SubscriptionCancelRequest(BaseModel):
     behaviour. cancellation_reason is optional.
     """
 
-    cancellation_reason: Optional[str] = Field(
+    cancellation_reason: str | None = Field(
         default=None,
         max_length=500,
         description="Optional reason for cancellation.",

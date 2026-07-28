@@ -4,17 +4,18 @@ Request/response schemas for the payments domain.
 This domain only deals with the Paystack transaction lifecycle.
 Subscription state is handled in subscriptions/schemas.py.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ── Initialize payment ─────────────────────────────────────────────────────────
+
 
 class InitializePaymentRequest(BaseModel):
     """
@@ -22,11 +23,13 @@ class InitializePaymentRequest(BaseModel):
     Amount is looked up server-side from constants — client never
     supplies the amount (prevents price tampering).
     """
+
     plan_type: Literal["renter", "agent"]
 
 
 class InitializePaymentResponse(BaseModel):
     """Returned so the client can redirect to Paystack's checkout page."""
+
     payment_id: uuid.UUID
     authorization_url: str
     access_code: str
@@ -35,21 +38,24 @@ class InitializePaymentResponse(BaseModel):
 
 # ── Payment read ──────────────────────────────────────────────────────────────
 
+
 class PaymentRead(BaseModel):
     """Full payment transaction details."""
+
     id: uuid.UUID
     amount: int = Field(..., description="Amount in kobo (100000 = ₦1,000)")
     amount_in_naira: Decimal = Field(..., description="Amount in naira for display")
     status: str
     provider: str
-    paystack_reference: Optional[str] = None
-    paid_at: Optional[datetime] = None
+    paystack_reference: str | None = None
+    paid_at: datetime | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
 # ── Paystack webhook ──────────────────────────────────────────────────────────
+
 
 class PaystackWebhookPayload(BaseModel):
     """
@@ -69,13 +75,14 @@ class PaystackWebhookPayload(BaseModel):
           }
         }
     """
+
     event: str
     reference: str
-    amount: int          # kobo, from data.amount
-    status: str           # "success" | "failed" | etc.
+    amount: int  # kobo, from data.amount
+    status: str  # "success" | "failed" | etc.
 
     @classmethod
-    def from_paystack_payload(cls, raw: dict) -> "PaystackWebhookPayload":
+    def from_paystack_payload(cls, raw: dict) -> PaystackWebhookPayload:
         """
         Extract fields we care about from Paystack's nested
         event/data structure. Raises KeyError if payload is malformed

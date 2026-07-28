@@ -15,6 +15,7 @@ Design decisions:
     layer with a clear message so security.hash_password() never sees
     oversized input.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -22,10 +23,10 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.constants import PASSWORD_MIN_LENGTH, PASSWORD_MAX_BYTES
-
+from app.constants import PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH
 
 # ── Registration ──────────────────────────────────────────────────────────────
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -34,12 +35,11 @@ class RegisterRequest(BaseModel):
         min_length=PASSWORD_MIN_LENGTH,
         max_length=PASSWORD_MAX_BYTES,
         description=(
-            f"{PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_BYTES} characters. "
-            "At least one number or symbol."
+            f"{PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_BYTES} characters. At least one number or symbol."
         ),
     )
     first_name: str = Field(..., min_length=1, max_length=100)
-    last_name:  str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
     role: Literal["renter", "agent"] = "renter"
     # NDPR: explicit terms acceptance required at registration.
     # Client must send True -- False is rejected, ensuring no accidental
@@ -65,12 +65,10 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_complexity(cls, v: str) -> str:
-        has_digit   = any(c.isdigit()   for c in v)
+        has_digit = any(c.isdigit() for c in v)
         has_special = any(not c.isalnum() for c in v)
         if not (has_digit or has_special):
-            raise ValueError(
-                "Password must contain at least one number or special character"
-            )
+            raise ValueError("Password must contain at least one number or special character")
         return v
 
     @field_validator("first_name", "last_name")
@@ -80,6 +78,7 @@ class RegisterRequest(BaseModel):
 
 
 # ── Login ─────────────────────────────────────────────────────────────────────
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -93,12 +92,14 @@ class LoginRequest(BaseModel):
 
 # ── Token / response ──────────────────────────────────────────────────────────
 
+
 class AuthUserRead(BaseModel):
     """
     Minimal user snapshot returned alongside tokens. Keeps the login
     response self-contained -- frontend can populate the user store
     without a separate GET /users/me call.
     """
+
     id: uuid.UUID
     email: str
     first_name: str
@@ -118,6 +119,7 @@ class TokenResponse(BaseModel):
     refresh_token is NOT here -- set as HTTP-only cookie by the router.
     Keeping it out of the body prevents JavaScript from reading it (XSS).
     """
+
     access_token: str
     token_type: str = "bearer"
     user: AuthUserRead
@@ -128,5 +130,6 @@ class RefreshResponse(BaseModel):
     Returned by POST /auth/refresh. User payload omitted -- hasn't
     changed. New refresh token is set as a cookie by the router.
     """
+
     access_token: str
     token_type: str = "bearer"

@@ -60,18 +60,18 @@ Paystack webhook HMAC verification     → app/domains/payments/webhooks.py
 Role / permission guards               → app/core/permissions/guards.py
 ──────────────────────────────────────────────────────────────────────
 """
+
 from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import bcrypt
 import jwt
 
 from app.core.config import settings
-
 
 # ─── Password Hashing ────────────────────────────────────────────────────────
 #
@@ -124,7 +124,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             plain_password.encode("utf-8"),
             hashed_password.encode("utf-8"),
         )
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         # Malformed hash (e.g. corrupted DB value) or oversized input —
         # treat as no match. Never raise from this function.
         return False
@@ -133,7 +133,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ─── Token Types ─────────────────────────────────────────────────────────────
 
 
-class TokenType(str, enum.Enum):
+class TokenType(enum.StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
 
@@ -166,7 +166,7 @@ def _create_token(
     subject: str | uuid.UUID,
     token_type: TokenType,
     expires_delta: timedelta,
-    extra_claims: Optional[dict[str, Any]] = None,
+    extra_claims: dict[str, Any] | None = None,
 ) -> str:
     """
     Internal helper — both create_access_token and create_refresh_token
@@ -174,7 +174,7 @@ def _create_token(
     below so the (token_type, expiry) pairing can never drift from the
     Standard 18 contract (30 min access / 7 day refresh).
     """
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload: dict[str, Any] = {
         "sub": str(subject),
         "type": token_type.value,
@@ -198,7 +198,7 @@ def _create_token(
 
 def create_access_token(
     subject: str | uuid.UUID,
-    extra_claims: Optional[dict[str, Any]] = None,
+    extra_claims: dict[str, Any] | None = None,
 ) -> str:
     """
     Create a short-lived access token (Standard 18: 30 minutes default,
@@ -271,8 +271,7 @@ def decode_token(token: str, expected_type: TokenType) -> dict[str, Any]:
 
     if payload.get("type") != expected_type.value:
         raise InvalidTokenError(
-            f"Expected a {expected_type.value!r} token, "
-            f"got {payload.get('type')!r}"
+            f"Expected a {expected_type.value!r} token, got {payload.get('type')!r}"
         )
 
     return payload

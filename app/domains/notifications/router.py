@@ -28,6 +28,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 # ── GET /notifications ────────────────────────────────────────────────────────
 
+
 @router.get(
     "",
     response_model=PaginatedResponse[NotificationRead],
@@ -45,6 +46,7 @@ async def list_notifications(
 
 # ── GET /notifications/unread-count ───────────────────────────────────────────
 
+
 @router.get(
     "/unread-count",
     response_model=SuccessResponse[UnreadCountRead],
@@ -60,6 +62,7 @@ async def get_unread_count(
 
 # ── POST /notifications/read-all ──────────────────────────────────────────────
 # NOTE: Placed BEFORE /{notification_id}/read to prevent FastAPI route shadowing!
+
 
 @router.post(
     "/read-all",
@@ -80,6 +83,7 @@ async def mark_all_read(
 
 # ── POST /notifications/{notification_id}/read ────────────────────────────────
 
+
 @router.post(
     "/{notification_id}/read",
     response_model=SuccessResponse[NotificationRead],
@@ -91,6 +95,4 @@ async def mark_read(
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse[NotificationRead]:
     svc = NotificationService(db)
-    return SuccessResponse.ok(
-        data=await svc.mark_read(notification_id, current_user)
-    )
+    return SuccessResponse.ok(data=await svc.mark_read(notification_id, current_user))

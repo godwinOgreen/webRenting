@@ -10,6 +10,7 @@ reads request.body() directly rather than declaring a Pydantic request
 model as the endpoint parameter. Everything after verification still
 delegates to the service.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,6 +38,7 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 
 # ── POST /payments/initialize ─────────────────────────────────────────────────
 
+
 @router.post(
     "/initialize",
     response_model=SuccessResponse[InitializePaymentResponse],
@@ -48,12 +50,11 @@ async def initialize(
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse[InitializePaymentResponse]:
     svc = PaymentService(db)
-    return SuccessResponse.ok(
-        data=await svc.initialize_payment(current_user, data)
-    )
+    return SuccessResponse.ok(data=await svc.initialize_payment(current_user, data))
 
 
 # ── GET /payments/mine ────────────────────────────────────────────────────────
+
 
 @router.get(
     "/mine",
@@ -72,6 +73,7 @@ async def list_my_payments(
 
 # ── GET /payments/{id} ─────────────────────────────────────────────────────────
 
+
 @router.get(
     "/{payment_id}",
     response_model=SuccessResponse[PaymentRead],
@@ -83,12 +85,11 @@ async def get_payment(
     db: AsyncSession = Depends(get_db),
 ) -> SuccessResponse[PaymentRead]:
     svc = PaymentService(db)
-    return SuccessResponse.ok(
-        data=await svc.get_for_user(payment_id, current_user)
-    )
+    return SuccessResponse.ok(data=await svc.get_for_user(payment_id, current_user))
 
 
 # ── POST /payments/webhook ────────────────────────────────────────────────────
+
 
 @router.post(
     "/webhook",

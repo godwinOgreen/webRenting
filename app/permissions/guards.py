@@ -29,9 +29,10 @@ Redis caching:
   On Redis failure: falls through to DB — outage degrades performance,
   never blocks legitimate users.
 """
+
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from fastapi import Depends
 from redis.asyncio import Redis
@@ -45,8 +46,8 @@ from app.domains.subscriptions.models import Subscription
 from app.domains.users.models import KycStatus, User, UserRole
 from app.permissions.roles import can_manage_platform, can_moderate
 
-
 # ── Internal Helpers ──────────────────────────────────────────────────────────
+
 
 async def _enforce_subscription(user: User, db: AsyncSession, redis: Redis) -> None:
     """
@@ -76,7 +77,7 @@ async def _enforce_subscription(user: User, db: AsyncSession, redis: Redis) -> N
         .order_by(Subscription.expires_at.desc())
         .limit(1)
     )
-    subscription: Optional[Subscription] = result.scalar_one_or_none()
+    subscription: Subscription | None = result.scalar_one_or_none()
 
     if subscription is None:
         raise ForbiddenException(
@@ -103,8 +104,7 @@ def _enforce_kyc(user: User) -> None:
 
     if user.kyc_status == KycStatus.REJECTED:
         raise KYCException(
-            message="Your identity verification was rejected. "
-                    "Please re-submit your documents.",
+            message="Your identity verification was rejected. Please re-submit your documents.",
             error_code="kyc_rejected",
             log_context={"user_id": str(user.id)},
         )
@@ -118,14 +118,14 @@ def _enforce_kyc(user: User) -> None:
 
     # NOT_SUBMITTED
     raise KYCException(
-        message="Identity verification is required. "
-                "Please complete KYC verification to continue.",
+        message="Identity verification is required. Please complete KYC verification to continue.",
         error_code="kyc_required",
         log_context={"user_id": str(user.id)},
     )
 
 
 # ── Guards ────────────────────────────────────────────────────────────────────
+
 
 def require_role(*roles: UserRole) -> Callable:
     """
@@ -134,6 +134,7 @@ def require_role(*roles: UserRole) -> Callable:
     Raises:
         ForbiddenException(error_code="insufficient_role")
     """
+
     async def guard(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in roles:
             role_names = " or ".join(r.value for r in roles)
@@ -158,6 +159,7 @@ def require_subscription() -> Callable:
     Raises:
         ForbiddenException(error_code="subscription_required")
     """
+
     async def guard(
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
@@ -168,7 +170,9 @@ def require_subscription() -> Callable:
 
     return guard
 
+
 # ── require_kyc ───────────────────────────────────────────────────────────────
+
 
 def require_kyc() -> Callable:
     """
@@ -178,6 +182,7 @@ def require_kyc() -> Callable:
     Raises:
         KYCException(error_code="kyc_required" | "kyc_rejected" | "kyc_pending")
     """
+
     async def guard(current_user: User = Depends(get_current_user)) -> User:
         _enforce_kyc(current_user)
         return current_user
@@ -198,6 +203,7 @@ def require_verified_renter() -> Callable:
         ForbiddenException(error_code="subscription_required")
         KYCException(error_code="kyc_required" | "kyc_rejected" | "kyc_pending")
     """
+
     async def guard(
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
@@ -209,7 +215,9 @@ def require_verified_renter() -> Callable:
 
     return guard
 
+
 # ── require_agent ─────────────────────────────────────────────────────────────
+
 
 def require_agent() -> Callable:
     """
@@ -226,6 +234,7 @@ def require_agent() -> Callable:
         ForbiddenException(error_code="subscription_required")
         KYCException(error_code="kyc_required" | "kyc_rejected" | "kyc_pending")
     """
+
     async def guard(
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
@@ -248,7 +257,9 @@ def require_agent() -> Callable:
 
     return guard
 
+
 # ── require_moderator ─────────────────────────────────────────────────────────
+
 
 def require_moderator() -> Callable:
     """
@@ -259,6 +270,7 @@ def require_moderator() -> Callable:
     Raises:
         ForbiddenException(error_code="insufficient_role")
     """
+
     async def guard(current_user: User = Depends(get_current_user)) -> User:
         if not can_moderate(current_user):
             raise ForbiddenException(
@@ -281,6 +293,7 @@ def require_super_admin() -> Callable:
     Raises:
         ForbiddenException(error_code="insufficient_role")
     """
+
     async def guard(current_user: User = Depends(get_current_user)) -> User:
         if not can_manage_platform(current_user):
             raise ForbiddenException(
@@ -290,7 +303,8 @@ def require_super_admin() -> Callable:
                     "user_id": str(current_user.id),
                     "user_role": current_user.role.value,
                     "admin_role": current_user.admin_role.value
-                    if current_user.admin_role else None,
+                    if current_user.admin_role
+                    else None,
                 },
             )
         return current_user

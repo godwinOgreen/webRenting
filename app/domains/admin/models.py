@@ -81,22 +81,23 @@ Action coordination pattern:
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, Index, String, Text, text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, CreatedAtMixin
+from app.db.mixins import CreatedAtMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.users.models import User
 
 
 # ─── Model ───────────────────────────────────────────────────────────────────
+
 
 class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
     """
@@ -129,7 +130,8 @@ class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
 
     # ── What action ───────────────────────────────────────────────────────────
     action: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
         comment=(
             "What the admin did. Valid values (validated in admin_service): "
             "approve_property | reject_property | suspend_property | "
@@ -142,7 +144,8 @@ class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
 
     # ── What entity was affected (polymorphic) ────────────────────────────────
     target_type: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
         comment=(
             "Type of entity affected. Valid values: "
             "user | property | report | kyc_document | subscription | media_asset. "
@@ -150,7 +153,8 @@ class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
         ),
     )
     target_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False,
+        UUID(as_uuid=True),
+        nullable=False,
         comment=(
             "UUID of the entity affected. No DB-level FK — target table varies. "
             "Service resolves: if target_type='user' → user_service.get_by_id(id)."
@@ -158,8 +162,9 @@ class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Details ───────────────────────────────────────────────────────────────
-    details: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+    details: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
         comment=(
             "Free-text description of the action and reasoning. "
             "Required for destructive actions (suspend, reject, override). "
@@ -169,16 +174,18 @@ class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Previous and new values (optional, for state changes) ─────────────────
-    previous_value: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True,
+    previous_value: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
         comment=(
             "The value BEFORE the action. For tracking state transitions. "
             "e.g. action='change_role', previous_value='renter', new_value='agent'. "
             "NULL when not applicable (e.g. resolve_report)."
         ),
     )
-    new_value: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True,
+    new_value: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
         comment=(
             "The value AFTER the action. For tracking state transitions. "
             "e.g. action='suspend_user', previous_value='active', new_value='suspended'. "
@@ -187,8 +194,9 @@ class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
     )
 
     # ── Security ──────────────────────────────────────────────────────────────
-    ip_address: Mapped[Optional[str]] = mapped_column(
-        String(45), nullable=True,
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
         comment=(
             "Admin's IP address at the time of action. "
             "Security evidence for detecting compromised admin accounts. "
@@ -253,7 +261,7 @@ class AdminAuditLog(Base, UUIDMixin, CreatedAtMixin):
         return self.action.replace("_", " ").title()
 
     @property
-    def state_change_display(self) -> Optional[str]:
+    def state_change_display(self) -> str | None:
         """
         Human-readable state transition.
         e.g. "renter → agent" or "pending → suspended"

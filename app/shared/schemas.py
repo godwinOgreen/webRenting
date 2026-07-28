@@ -29,6 +29,7 @@ Response envelope:
   The global exception handler in main.py produces the error shape;
   SuccessResponse/PaginatedResponse produce the success shape.
 """
+
 from __future__ import annotations
 
 import enum
@@ -39,8 +40,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
-
 # ─── Python-only Enums ───────────────────────────────────────────────────────
+
 
 class SubscriptionPlanType(str, enum.Enum):
     """
@@ -58,11 +59,13 @@ class SubscriptionPlanType(str, enum.Enum):
     Pricing: see RENTER_PLAN_PRICE_KOBO and AGENT_PLAN_PRICE_KOBO
     in app/constants.py.
     """
+
     RENTER = "renter"
     AGENT = "agent"
 
 
 # ─── Common Request Schemas ──────────────────────────────────────────────────
+
 
 class PaginationParams(BaseModel):
     """
@@ -75,6 +78,7 @@ class PaginationParams(BaseModel):
             items, total = await repo.list(db, params.page, params.per_page)
             return PaginatedResponse.paginate(items, total, params.page, params.per_page)
     """
+
     page: int = Field(
         default=1,
         ge=1,
@@ -106,6 +110,7 @@ class DateRangeParams(BaseModel):
     Omit start_date for "up to end_date".
     Omit end_date for "from start_date onwards".
     """
+
     start_date: str | None = Field(
         default=None,
         description="ISO 8601 start date (inclusive). e.g. '2026-01-01'.",
@@ -134,6 +139,7 @@ class SuccessResponse(BaseModel, Generic[T]):
         return SuccessResponse.empty(message="Notification marked as read")
         return SuccessResponse.created(data=new_property)
     """
+
     success: bool = True
     message: str = "Success"
     data: T | None = None
@@ -158,6 +164,7 @@ class SuccessResponse(BaseModel, Generic[T]):
 
 class PaginationMeta(BaseModel):
     """Page metadata embedded inside PaginatedResponse."""
+
     page: int
     per_page: int
     total: int
@@ -175,6 +182,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
         items, total = await repo.list(db, page, per_page)
         return PaginatedResponse.paginate(items, total, page, per_page)
     """
+
     success: bool = True
     message: str = "Success"
     data: list[T]
@@ -225,6 +233,7 @@ class CursorPage(BaseModel, Generic[T]):
     a base64-encoded timestamp or row ID. Encoding/decoding lives in
     the service layer, not here.
     """
+
     items: list[T]
     next_cursor: str | None = None
     has_more: bool = False

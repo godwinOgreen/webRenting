@@ -44,20 +44,26 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, ForeignKey, Integer,
-    String, Text, text, func,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.mixins import UUIDMixin, TimestampMixin
+from app.db.mixins import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.domains.payments.models import Payment
@@ -67,6 +73,7 @@ if TYPE_CHECKING:
 
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
+
 
 class BookingType(str, enum.Enum):
     """
@@ -79,6 +86,7 @@ class BookingType(str, enum.Enum):
     The difference only matters for how the agent prepares and what
     the notification messages say.
     """
+
     PHYSICAL_INSPECTION = "physical_inspection"
     VIRTUAL = "virtual"
 
@@ -97,6 +105,7 @@ class BookingStatus(str, enum.Enum):
     Terminal states: REJECTED, COMPLETED.
     CANCELLED from CONFIRMED: agent slot is freed (is_booked → False).
     """
+
     PENDING = "pending"
     CONFIRMED = "confirmed"
     REJECTED = "rejected"
@@ -120,6 +129,7 @@ _booking_status_col = sa.Enum(
 
 
 # ─── AgentAvailability Model ─────────────────────────────────────────────────
+
 
 class AgentAvailability(Base, UUIDMixin, TimestampMixin):
     """
@@ -160,15 +170,18 @@ class AgentAvailability(Base, UUIDMixin, TimestampMixin):
         comment="CASCADE: property deleted → its availability slots are meaningless.",
     )
     slot_start: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         comment="Start of the available window (timezone-aware).",
     )
     slot_end: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         comment="End of the available window. Must be after slot_start.",
     )
     is_booked: Mapped[bool] = mapped_column(
-        Boolean, nullable=False,
+        Boolean,
+        nullable=False,
         server_default=text("false"),
         default=False,
         index=True,
@@ -201,10 +214,7 @@ class AgentAvailability(Base, UUIDMixin, TimestampMixin):
     @hybrid_property
     def is_available(self) -> bool:
         """Slot is open and in the future."""
-        return (
-            not self.is_booked
-            and self.slot_start > datetime.now(tz=timezone.utc)
-        )
+        return not self.is_booked and self.slot_start > datetime.now(tz=UTC)
 
     @is_available.expression
     def is_available(cls):
@@ -226,7 +236,7 @@ class AgentAvailability(Base, UUIDMixin, TimestampMixin):
 
     @property
     def is_in_past(self) -> bool:
-        return self.slot_start < datetime.now(tz=timezone.utc)
+        return self.slot_start < datetime.now(tz=UTC)
 
     @property
     def duration_minutes(self) -> int:
@@ -246,6 +256,7 @@ class AgentAvailability(Base, UUIDMixin, TimestampMixin):
 
 
 # ─── Booking Model ──────────────────────────────────────────────────────────
+
 
 class Booking(Base, UUIDMixin, TimestampMixin):
     """
@@ -289,7 +300,7 @@ class Booking(Base, UUIDMixin, TimestampMixin):
         index=True,
         comment="The renter making the booking.",
     )
-    payment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("payments.id", ondelete="SET NULL"),
         nullable=True,
@@ -302,32 +313,37 @@ class Booking(Base, UUIDMixin, TimestampMixin):
 
     # ── Visit details ─────────────────────────────────────────────────────────
     visit_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         index=True,
         comment="The agreed visit time. Must match an AgentAvailability slot.",
     )
     booking_type: Mapped[BookingType] = mapped_column(
-        _booking_type_col, nullable=False,
+        _booking_type_col,
+        nullable=False,
         comment="physical_inspection (in-person) or virtual (video/360° tour).",
     )
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
     status: Mapped[BookingStatus] = mapped_column(
-        _booking_status_col, nullable=False,
+        _booking_status_col,
+        nullable=False,
         server_default=text("'pending'"),
         default=BookingStatus.PENDING,
         index=True,
     )
-    rejection_reason: Mapped[Optional[str]] = mapped_column(
-        String(500), nullable=True,
+    rejection_reason: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
         comment=(
             "Required when status = rejected (Rule 7). "
             "Enforced by booking_service.reject() — not a DB constraint. "
             "Shown to the renter so they understand why the booking was declined."
         ),
     )
-    notes: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
         comment="Optional message from the renter to the agent when booking.",
     )
 
@@ -341,7 +357,7 @@ class Booking(Base, UUIDMixin, TimestampMixin):
         back_populates="bookings",
         foreign_keys=[user_id],
     )
-    payment: Mapped[Optional[Payment]] = relationship(
+    payment: Mapped[Payment | None] = relationship(
         "Payment",
         uselist=False,
     )
@@ -401,10 +417,7 @@ class Booking(Base, UUIDMixin, TimestampMixin):
             for booking in (await db.execute(stmt)).scalars():
                 booking.status = BookingStatus.COMPLETED
         """
-        return (
-            self.status == BookingStatus.CONFIRMED
-            and self.visit_time < datetime.now(tz=timezone.utc)
-        )
+        return self.status == BookingStatus.CONFIRMED and self.visit_time < datetime.now(tz=UTC)
 
     @visit_is_past.expression
     def visit_is_past(cls):
@@ -447,7 +460,7 @@ class Booking(Base, UUIDMixin, TimestampMixin):
     @property
     def visit_is_upcoming(self) -> bool:
         """True if the visit hasn't happened yet."""
-        return self.visit_time > datetime.now(tz=timezone.utc)
+        return self.visit_time > datetime.now(tz=UTC)
 
     # ── repr ──────────────────────────────────────────────────────────────────
 

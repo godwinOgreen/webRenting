@@ -9,14 +9,14 @@ this file just includes them. Add new domains here as they're built.
 from fastapi import APIRouter
 
 from app.domains.auth.router import router as auth_router
-from app.domains.users.router import router as users_router
-from app.domains.users.router import agents_router
-from app.domains.properties.router import router as properties_router
 from app.domains.bookings.router import router as bookings_router
-from app.domains.payments.router import router as payments_router
-from app.domains.subscriptions.router import router as subscriptions_router
 from app.domains.messaging.router import router as messaging_router
 from app.domains.notifications.router import router as notifications_router
+from app.domains.payments.router import router as payments_router
+from app.domains.properties.router import router as properties_router
+from app.domains.subscriptions.router import router as subscriptions_router
+from app.domains.users.router import agents_router
+from app.domains.users.router import router as users_router
 
 api_router = APIRouter()
 

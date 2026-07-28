@@ -9,14 +9,13 @@ PostGIS approach: latitude/longitude are stored as DOUBLE PRECISION columns
 PostgreSQL functions (ST_DWithin, ST_MakePoint, ST_SetSRID) via
 SQLAlchemy's func interface — no geoalchemy2 required.
 """
+
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
-from typing import Optional
-
 import asyncio
-from sqlalchemy import and_, func, select, delete
+import uuid
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,7 +34,7 @@ class PropertyRepository:
 
     # ── Reads ─────────────────────────────────────────────────────────────────
 
-    async def get_by_id(self, property_id: uuid.UUID) -> Optional[Property]:
+    async def get_by_id(self, property_id: uuid.UUID) -> Property | None:
         """Fetch a single property with features and images eagerly loaded."""
         result = await self.db.execute(
             select(Property)
@@ -49,7 +48,7 @@ class PropertyRepository:
 
     async def get_by_id_and_owner(
         self, property_id: uuid.UUID, owner_id: uuid.UUID
-    ) -> Optional[Property]:
+    ) -> Property | None:
         """Fetch a property only if the requesting user is the owner."""
         result = await self.db.execute(
             select(Property)
@@ -66,7 +65,7 @@ class PropertyRepository:
         owner_id: uuid.UUID,
         page: int,
         per_page: int,
-        approval_status: Optional[str] = None,
+        approval_status: str | None = None,
     ) -> tuple[list[Property], int]:
         """Agent's own listings, all statuses. Returns (items, total)."""
         base = select(Property).where(Property.owner_id == owner_id)
@@ -93,12 +92,9 @@ class PropertyRepository:
         PostGIS radius search uses ST_DWithin on Geography type for
         accurate meter-based distance regardless of latitude.
         """
-        base = (
-            select(Property)
-            .where(
-                Property.approval_status == ApprovalStatus.PUBLISHED,
-                Property.expires_at > func.now(),
-            )
+        base = select(Property).where(
+            Property.approval_status == ApprovalStatus.PUBLISHED,
+            Property.expires_at > func.now(),
         )
 
         # String / enum filters
@@ -132,9 +128,7 @@ class PropertyRepository:
         # PostGIS radius filter
         if f.lat is not None and f.lng is not None and f.radius_km is not None:
             # Build the search point as a geography object
-            search_point = func.ST_SetSRID(
-                func.ST_MakePoint(f.lng, f.lat), 4326
-            ).cast("geography")
+            search_point = func.ST_SetSRID(func.ST_MakePoint(f.lng, f.lat), 4326).cast("geography")
 
             # Build the property point as a geography object
             property_point = func.ST_SetSRID(
@@ -142,7 +136,7 @@ class PropertyRepository:
             ).cast("geography")
 
             base = base.where(
-                func.ST_DWithin(property_point, search_point, f.radius_km * 1000)   # km → metres
+                func.ST_DWithin(property_point, search_point, f.radius_km * 1000)  # km → metres
             )
 
         # Must have ALL requested features (single subquery, not a loop)
@@ -171,22 +165,19 @@ class PropertyRepository:
                 Property.featured.desc(),
                 Property.created_at.desc(),
             )
-            .offset((page - 1) * f.per_page)
+            .offset((f.page - 1) * f.per_page)
             .limit(f.per_page)
         )
 
         count_res, data_res = await asyncio.gather(
-            self.db.execute(count_q),
-            self.db.execute(data_q)
-            )
+            self.db.execute(count_q), self.db.execute(data_q)
+        )
         return list(data_res.scalars().all()), count_res.scalar_one()
 
     async def list_features(self) -> list[PropertyFeature]:
         """All available amenity/feature options (seed data)."""
         result = await self.db.execute(
-            select(PropertyFeature).order_by(
-                PropertyFeature.category, PropertyFeature.name
-            )
+            select(PropertyFeature).order_by(PropertyFeature.category, PropertyFeature.name)
         )
         return list(result.scalars().all())
 
@@ -244,8 +235,8 @@ class PropertyRepository:
         prop: Property,
         new_status: ApprovalStatus,
         *,
-        rejection_reason: Optional[str] = None,
-        approved_by: Optional[uuid.UUID] = None,
+        rejection_reason: str | None = None,
+        approved_by: uuid.UUID | None = None,
     ) -> Property:
         """Update approval status and optional side-effect fields."""
         prop.approval_status = new_status
@@ -265,14 +256,11 @@ class PropertyRepository:
     ) -> None:
         """Replace all features for a property. Delete existing, insert new."""
         await self.db.execute(
-            delete(PropertyFeatureMap).where(
-                PropertyFeatureMap.property_id == property_id
-            )
+            delete(PropertyFeatureMap).where(PropertyFeatureMap.property_id == property_id)
         )
         if feature_ids:
             maps = [
-                PropertyFeatureMap(property_id=property_id, feature_id=fid)
-                for fid in feature_ids
+                PropertyFeatureMap(property_id=property_id, feature_id=fid) for fid in feature_ids
             ]
             self.db.add_all(maps)
         await self.db.flush()

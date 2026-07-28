@@ -17,6 +17,7 @@ Refresh token cookie spec (Standard 18):
 
 Rate limiting is handled by middleware, not here -- see Standard 21.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,6 +51,7 @@ _REFRESH_COOKIE = "refresh_token"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
     """Set the HTTP-only refresh token cookie."""
@@ -94,6 +96,7 @@ def _extract_user_agent(request: Request) -> str | None:
 
 # ── POST /auth/register ───────────────────────────────────────────────────────
 
+
 @router.post(
     "/register",
     response_model=SuccessResponse[TokenResponse],
@@ -132,6 +135,7 @@ async def register(
 
 # ── POST /auth/login ──────────────────────────────────────────────────────────
 
+
 @router.post(
     "/login",
     response_model=SuccessResponse[TokenResponse],
@@ -166,6 +170,7 @@ async def login(
 
 
 # ── POST /auth/refresh ────────────────────────────────────────────────────────
+
 
 @router.post(
     "/refresh",
@@ -204,6 +209,7 @@ async def refresh(
 
 
 # ── POST /auth/logout ─────────────────────────────────────────────────────────
+
 
 @router.post(
     "/logout",

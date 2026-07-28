@@ -9,6 +9,7 @@ Boundary rules (01_ARCHITECTURE.md):
   - No HTTP imports -- raises domain exceptions only
   - No imports from other domain services
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,7 +31,7 @@ from app.core.security import (
 )
 from app.domains.auth.repository import AuthRepository
 from app.domains.auth.schemas import AuthUserRead, RegisterRequest, TokenResponse
-from app.domains.users.models import User, UserRole
+from app.domains.users.models import UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -254,9 +255,7 @@ class AuthService:
         # Check blacklist
         if jti:
             try:
-                blacklisted = await self.redis.get(
-                    RedisKeys.refresh_token_blacklist(jti)
-                )
+                blacklisted = await self.redis.get(RedisKeys.refresh_token_blacklist(jti))
                 if blacklisted:
                     logger.warning(
                         "Blacklisted refresh token reused -- possible token theft",
@@ -283,9 +282,7 @@ class AuthService:
         if jti:
             try:
                 ttl = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86_400
-                await self.redis.setex(
-                    RedisKeys.refresh_token_blacklist(jti), ttl, "1"
-                )
+                await self.redis.setex(RedisKeys.refresh_token_blacklist(jti), ttl, "1")
             except Exception:
                 pass  # Redis failure is not fatal here
 
@@ -317,8 +314,6 @@ class AuthService:
             jti = payload.get("jti")
             if jti:
                 ttl = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86_400
-                await self.redis.setex(
-                    RedisKeys.refresh_token_blacklist(jti), ttl, "1"
-                )
+                await self.redis.setex(RedisKeys.refresh_token_blacklist(jti), ttl, "1")
         except Exception:
             pass  # Expired, invalid, or Redis failure -- all fine on logout

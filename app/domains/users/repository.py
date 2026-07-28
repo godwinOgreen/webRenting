@@ -4,6 +4,7 @@ domains/users/repository.py
 Data access for the users domain. Raw SQLAlchemy queries only --
 no business logic, no HTTP exceptions, no schema imports.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -28,9 +29,7 @@ class UserRepository:
 
     async def get_by_email(self, email: str) -> User | None:
         """Fetch by normalised email. Returns None if not found."""
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         return result.scalar_one_or_none()
 
     async def list_agents(
@@ -49,16 +48,12 @@ class UserRepository:
             base = base.where(User.verified.is_(True))
 
         # Capture total aggregate matching rows using an explicit subquery block
-        count_result = await self.db.execute(
-            select(func.count()).select_from(base.subquery())
-        )
+        count_result = await self.db.execute(select(func.count()).select_from(base.subquery()))
         total = count_result.scalar_one()
 
         # Fetch the exact page window slice
         result = await self.db.execute(
-            base.order_by(User.created_at.desc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
+            base.order_by(User.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
         )
         agents = list(result.scalars().all())
         return agents, total
@@ -68,9 +63,7 @@ class UserRepository:
     ) -> UserNotificationSettings | None:
         """Fetch notification settings for a user. Returns None if not found."""
         result = await self.db.execute(
-            select(UserNotificationSettings).where(
-                UserNotificationSettings.user_id == user_id
-            )
+            select(UserNotificationSettings).where(UserNotificationSettings.user_id == user_id)
         )
         return result.scalar_one_or_none()
 

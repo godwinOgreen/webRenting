@@ -26,13 +26,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.core.config import settings
-
 # Import all models so SQLAlchemy mapper can resolve relationships.
 # Without this, models that reference each other (e.g. User ↔ Property)
 # fail with "name 'Property' is not defined" at first query.
 import app.db.base_all  # noqa: F401
-
+from app.core.config import settings
 
 # ─── Async Engine ─────────────────────────────────────────────────────────────
 
@@ -61,7 +59,8 @@ async_session_factory = async_sessionmaker(
 
 # ─── FastAPI Dependency ───────────────────────────────────────────────────────
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """
     FastAPI async dependency — provides a database session per request.
 

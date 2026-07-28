@@ -3,11 +3,11 @@ domains/payments/repository.py
 
 Data access for the payments domain.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,23 +21,17 @@ class PaymentRepository:
 
     # ── Reads ─────────────────────────────────────────────────────────────────
 
-    async def get_by_id(self, payment_id: uuid.UUID) -> Optional[Payment]:
+    async def get_by_id(self, payment_id: uuid.UUID) -> Payment | None:
         return await self.db.get(Payment, payment_id)
 
-    async def get_by_reference(
-        self, paystack_reference: str
-    ) -> Optional[Payment]:
+    async def get_by_reference(self, paystack_reference: str) -> Payment | None:
         """Look up by Paystack reference. UNIQUE constraint ensures at most one match."""
         result = await self.db.execute(
-            select(Payment).where(
-                Payment.paystack_reference == paystack_reference
-            )
+            select(Payment).where(Payment.paystack_reference == paystack_reference)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_reference_for_update(
-        self, paystack_reference: str
-    ) -> Optional[Payment]:
+    async def get_by_reference_for_update(self, paystack_reference: str) -> Payment | None:
         """
         Pessimistic row-level lock on the payment record.
         Prevents race conditions when processing concurrent Paystack webhooks.
@@ -53,11 +47,7 @@ class PaymentRepository:
         self, user_id: uuid.UUID, page: int, per_page: int
     ) -> tuple[list[Payment], int]:
         # Clean count query without unnecessary subquery wrapping
-        count_stmt = (
-            select(func.count())
-            .select_from(Payment)
-            .where(Payment.user_id == user_id)
-        )
+        count_stmt = select(func.count()).select_from(Payment).where(Payment.user_id == user_id)
         total = (await self.db.execute(count_stmt)).scalar_one()
 
         # Paginated results query
@@ -69,7 +59,7 @@ class PaymentRepository:
             .limit(per_page)
         )
         result = await self.db.execute(query)
-        
+
         return list(result.scalars().all()), total
 
     # ── Writes ────────────────────────────────────────────────────────────────
@@ -97,9 +87,7 @@ class PaymentRepository:
         await self.db.flush()
         return payment
 
-    async def mark_success(
-        self, payment: Payment, paid_at: datetime
-    ) -> Payment:
+    async def mark_success(self, payment: Payment, paid_at: datetime) -> Payment:
         payment.status = PaymentStatus.SUCCESSFUL
         payment.paid_at = paid_at
         await self.db.flush()

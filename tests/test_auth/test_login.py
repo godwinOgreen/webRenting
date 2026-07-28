@@ -3,6 +3,7 @@ User authentication/login tests.
 
 Tests user login via the /auth/login endpoint.
 """
+
 import pytest
 from httpx import AsyncClient
 
@@ -22,7 +23,7 @@ async def test_user_login_success(client: AsyncClient):
             "accept_terms": True,
         },
     )
-    
+
     # Login
     response = await client.post(
         "/api/v1/auth/login",
@@ -51,7 +52,7 @@ async def test_user_login_invalid_credentials(client: AsyncClient):
             "accept_terms": True,
         },
     )
-    
+
     # Try to login with wrong password
     response = await client.post(
         "/api/v1/auth/login",
@@ -98,4 +99,3 @@ async def test_user_login_missing_password(client: AsyncClient):
         },
     )
     assert response.status_code == 422
-

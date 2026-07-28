@@ -6,6 +6,7 @@ domains/subscriptions/router.py
 HTTP layer for the subscriptions domain. No POST /subscriptions
 creation endpoint — see schemas.py and service.py docstrings.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -29,6 +30,7 @@ router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
 # ── GET /subscriptions/current ────────────────────────────────────────────────
 
+
 @router.get(
     "/current",
     response_model=SuccessResponse[SubscriptionRead],
@@ -43,6 +45,7 @@ async def get_current(
 
 
 # ── GET /subscriptions/history ────────────────────────────────────────────────
+
 
 @router.get(
     "/history",
@@ -61,6 +64,7 @@ async def list_history(
 
 # ── POST /subscriptions/{id}/cancel ───────────────────────────────────────────
 
+
 @router.post(
     "/{subscription_id}/cancel",
     response_model=SuccessResponse[SubscriptionRead],
@@ -75,9 +79,7 @@ async def cancel(
     redis: Redis = Depends(get_redis),
 ) -> SuccessResponse[SubscriptionRead]:
     svc = SubscriptionService(db, redis)
-    cancelled_sub = await svc.cancel(
-        subscription_id, current_user, data.cancellation_reason
-    )
+    cancelled_sub = await svc.cancel(subscription_id, current_user, data.cancellation_reason)
     return SuccessResponse.ok(
         data=cancelled_sub,
         message=(
