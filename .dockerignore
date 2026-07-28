@@ -1,0 +1,13 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+uploads/
+.env
+.vscode/
+tests/
+test_db_connection.py
+verify_db.py
