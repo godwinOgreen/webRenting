@@ -93,17 +93,54 @@ target_metadata = Base.metadata
 
 # ── PostGIS / system-object filtering ────────────────────────────────────────
 
-_EXTENSION_OWNED_TABLES = {
-    "spatial_ref_sys",  # Created by the postgis extension
+# ── PostGIS / system-object filtering ────────────────────────────────────────
+
+_EXTENSION_OWNED_TABLES = {"spatial_ref_sys"}
+
+# PostGIS tiger geocoder + topology tables installed in the public schema.
+# These are extension tables, not app tables — autogenerate must never touch them.
+_TIGER_TOPOLOGY_TABLES = {
+    "addr",
+    "addrfeat",
+    "bg",
+    "county",
+    "county_lookup",
+    "cousub",
+    "countysub_lookup",
+    "direction_lookup",
+    "edges",
+    "faces",
+    "featnames",
+    "geocode_settings",
+    "geocode_settings_default",
+    "layer",
+    "loader_lookuptables",
+    "loader_platform",
+    "loader_variables",
+    "pagc_gaz",
+    "pagc_lex",
+    "pagc_rules",
+    "place",
+    "place_lookup",
+    "secondary_unit_lookup",
+    "state",
+    "state_lookup",
+    "street_type_lookup",
+    "tabblock",
+    "tabblock20",
+    "topology",
+    "tract",
+    "zcta5",
+    "zip_lookup",
+    "zip_lookup_all",
+    "zip_lookup_base",
+    "zip_state",
+    "zip_state_loc",
 }
 
 
-def include_object(object, name, type_, reflected, compare_to):
-    """
-    Alembic autogenerate filter. Return False to exclude an object
-    from the diff entirely (it will never appear in a migration).
-    """
-    return not (type_ == "table" and name in _EXTENSION_OWNED_TABLES)
+def include_object(object, name, type_, reflected, compare_to):  # noqa: A002
+    return not (type_ == "table" and name in _EXTENSION_OWNED_TABLES | _TIGER_TOPOLOGY_TABLES)
 
 
 # ── Offline mode ─────────────────────────────────────────────────────────────

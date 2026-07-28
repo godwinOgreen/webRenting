@@ -9,11 +9,14 @@ WORKDIR /app
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy dependency files first (Docker cache layer)
-COPY pyproject.toml uv.lock ./
+# Copy dependency files + README (pyproject.toml references it)
+COPY pyproject.toml uv.lock README.md ./
+
+# Use system Python (3.13) instead of uv downloading its own
+ENV UV_PYTHON=/usr/local/bin/python3
 
 # Install dependencies
-RUN uv sync --no-cache --no-dev
+RUN uv sync --no-dev --no-cache
 
 # Copy application code
 COPY . .

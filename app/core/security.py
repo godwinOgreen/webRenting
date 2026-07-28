@@ -124,7 +124,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             plain_password.encode("utf-8"),
             hashed_password.encode("utf-8"),
         )
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         # Malformed hash (e.g. corrupted DB value) or oversized input —
         # treat as no match. Never raise from this function.
         return False

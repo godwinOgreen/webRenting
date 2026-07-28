@@ -30,7 +30,7 @@ class Settings(BaseSettings):
         description="PostgreSQL connection string",
     )
 
-    # ─── Redis (optional until Phase 4+) ─────────────────────────────────────
+    # ─── Redis ───────────────────────────────────────────────────────────────
     REDIS_URL: str | None = Field(
         default=None,
         description="Redis URL. None = skip Redis features (cache, celery, websocket pub/sub)",
@@ -117,6 +117,7 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": True,
+        "extra": "ignore",
     }
 
 

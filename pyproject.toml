@@ -6,7 +6,7 @@ version = "0.1.0"
 description = "A production-ready real estate rental platform built with FastAPI"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 authors = [
     { name = "Godwin Sun", email = "godwinemerald288@gmail.com" },
 ]
@@ -51,7 +51,7 @@ packages = ["app"]
 # ─── Ruff ─────────────────────────────────────────────────────────────────────
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]
@@ -84,6 +84,7 @@ select = [
 "app/core/event_loop.py" = ["E731"]
 # raise within except — auth service intentionally replaces exception type
 "app/domains/auth/service.py" = ["B904"]
+"alembic/env.py" = ["A002"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

@@ -183,8 +183,9 @@ class MediaAsset(Base, UUIDMixin, TimestampMixin):
     optimized_url: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="URL of the compressed version."
-        "Set by Celery media_processing task after processing.",
+        comment=(
+            "URL of the compressed version. Set by Celery media_processing task after processing."
+        ),
     )
     thumbnail_url: Mapped[str | None] = mapped_column(
         Text,
