@@ -65,6 +65,26 @@ select = [
     "SIM",  # flake8-simplify
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# FastAPI Depends() pattern — framework convention, not a bug
+"app/domains/*/router.py" = ["B008"]
+"app/core/dependencies.py" = ["B008"]
+# Auto-generated migration files — don't lint them
+"alembic/versions/*" = ["E501"]
+# Test files and utility scripts
+"tests/**" = ["E501", "F841"]
+"test_db_connection.py" = ["E501"]
+"verify_db.py" = ["E501", "W291", "W293"]
+# Generic syntax (str, enum.Enum) — batch migrate to StrEnum later
+"app/domains/*/models.py" = ["UP042"]
+"app/shared/schemas.py" = ["UP042", "UP046"]
+# try/except/pass for Redis cache warmup — intentional fire-and-forget
+"app/permissions/guards.py" = ["SIM105", "B008"]
+# Lambda is cleaner here than a def
+"app/core/event_loop.py" = ["E731"]
+# raise within except — auth service intentionally replaces exception type
+"app/domains/auth/service.py" = ["B904"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 
