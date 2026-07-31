@@ -38,15 +38,6 @@ Agent self-review prevention:
   CHECK constraint: agent_id <> reviewer_id
   An agent cannot review themselves. Enforced at database level.
 
-Rating range:
-  CHECK constraint: rating >= 1 AND rating <= 5
-  Star ratings from 1 (worst) to 5 (best).
-  No half-stars or decimals — integer only.
-
-Average rating calculation (in review_service):
-  Property average: SELECT AVG(rating) FROM reviews WHERE property_id = ?
-  Agent average:    SELECT AVG(rating) FROM agent_reviews WHERE agent_id = ?
-  Cached on the Property/User model (future optimization) or calculated on read.
 """
 
 from __future__ import annotations
@@ -75,7 +66,7 @@ if TYPE_CHECKING:
     from app.domains.users.models import User
 
 
-# ─── Review Model ────────────────────────────────────────────────────────────
+# ─── Property Review Model ────────────────────────────────────────────────────
 
 
 class Review(Base, UUIDMixin, CreatedAtMixin):
@@ -84,17 +75,14 @@ class Review(Base, UUIDMixin, CreatedAtMixin):
 
     Table: reviews
 
-    One review per booking per user (enforced by UNIQUE constraint).
+    One review per booking (enforced by UNIQUE constraint).
     Requires a completed booking (enforced in review_service).
     Immutable once written (no updated_at).
-
-    Average property rating (in repository):
-        stmt = select(func.avg(Review.rating)).where(Review.property_id == property_id)
     """
 
     __tablename__ = "reviews"
     __table_args__ = (
-        UniqueConstraint("user_id", "booking_id", name="uq_review_per_booking"),
+        UniqueConstraint("booking_id", name="uq_property_review_per_booking"),
         CheckConstraint(
             f"rating >= {MIN_RATING} AND rating <= {MAX_RATING}",
             name="chk_review_rating",
@@ -136,7 +124,7 @@ class Review(Base, UUIDMixin, CreatedAtMixin):
         comment=(
             "The completed booking that enabled this review. "
             "RESTRICT: reviews are permanent records. "
-            "Part of UNIQUE constraint (user_id, booking_id) — one review per booking."
+            "Part of UNIQUE constraint — one property review per booking."
         ),
     )
 
@@ -179,15 +167,7 @@ class Review(Base, UUIDMixin, CreatedAtMixin):
 
     @is_positive.expression
     def is_positive(cls):
-        """
-        SQL: WHERE Review.is_positive
-
-        Used in property quality score calculation:
-            positive_count = select(func.count()).where(
-                Review.property_id == property_id,
-                Review.is_positive,
-            )
-        """
+        """SQL: WHERE Review.rating >= 4"""
         return cls.rating >= 4
 
     @hybrid_property
@@ -197,7 +177,7 @@ class Review(Base, UUIDMixin, CreatedAtMixin):
 
     @is_negative.expression
     def is_negative(cls):
-        """SQL: WHERE Review.is_negative"""
+        """SQL: WHERE Review.rating <= 2"""
         return cls.rating <= 2
 
     # ── Computed properties: display-only ─────────────────────────────────────
@@ -218,7 +198,7 @@ class Review(Base, UUIDMixin, CreatedAtMixin):
         )
 
 
-# ─── AgentReview Model ───────────────────────────────────────────────────────
+# ─── Agent Review Model ───────────────────────────────────────────────────────
 
 
 class AgentReview(Base, UUIDMixin, CreatedAtMixin):
@@ -227,7 +207,7 @@ class AgentReview(Base, UUIDMixin, CreatedAtMixin):
 
     Table: agent_reviews
 
-    One agent review per booking per user (enforced by UNIQUE constraint).
+    One agent review per booking (enforced by UNIQUE constraint).
     Agent cannot review themselves (enforced by CHECK constraint).
     Requires a completed booking (enforced in review_service).
     Immutable once written (no updated_at).
@@ -238,17 +218,11 @@ class AgentReview(Base, UUIDMixin, CreatedAtMixin):
       A renter may love the property but hate the agent, or vice versa.
       Separating them allows independent ratings and different visibility rules.
 
-    Why agent_id + reviewer_id instead of agent_id + user_id:
-      The column is named reviewer_id (not user_id) to distinguish from
-      the property review's user_id column. Both refer to the renter,
-      but different names make queries unambiguous:
-        Review.user_id         → the renter who reviewed the property
-        AgentReview.reviewer_id → the renter who reviewed the agent
     """
 
     __tablename__ = "agent_reviews"
     __table_args__ = (
-        UniqueConstraint("reviewer_id", "booking_id", name="uq_agent_review_per_booking"),
+        UniqueConstraint("booking_id", name="uq_agent_review_per_booking"),
         CheckConstraint(
             f"rating >= {MIN_RATING} AND rating <= {MAX_RATING}",
             name="chk_agent_review_rating",
@@ -278,11 +252,7 @@ class AgentReview(Base, UUIDMixin, CreatedAtMixin):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
-        comment=(
-            "The renter who wrote this review. Named reviewer_id (not user_id) "
-            "to avoid ambiguity with Review.user_id. Both refer to the renter. "
-            "Part of UNIQUE constraint (reviewer_id, booking_id) — one review per booking."
-        ),
+        comment="The renter who wrote this review.",
     )
 
     # ── Which booking enabled this review ─────────────────────────────────────
@@ -291,27 +261,19 @@ class AgentReview(Base, UUIDMixin, CreatedAtMixin):
         ForeignKey("bookings.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
-        comment=(
-            "The completed booking that enabled this review. "
-            "RESTRICT: reviews are permanent records. "
-            "Part of UNIQUE constraint (reviewer_id, booking_id) — one review per booking."
-        ),
+        comment="The completed booking that enabled this review.",
     )
 
     # ── Review content ────────────────────────────────────────────────────────
     rating: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        comment=(
-            f"Star rating from {MIN_RATING} to {MAX_RATING}. "
-            "Integer only — no half-stars. "
-            "Enforced by chk_agent_review_rating CHECK constraint."
-        ),
+        comment=f"Star rating from {MIN_RATING} to {MAX_RATING}.",
     )
     body: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="Written review text. Optional — user may submit rating only.",
+        comment="Written review text. Optional.",
     )
 
     # ── Relationships ─────────────────────────────────────────────────────────
@@ -339,15 +301,7 @@ class AgentReview(Base, UUIDMixin, CreatedAtMixin):
 
     @is_positive.expression
     def is_positive(cls):
-        """
-        SQL: WHERE AgentReview.is_positive
-
-        Used in agent quality score calculation:
-            positive_count = select(func.count()).where(
-                AgentReview.agent_id == agent_id,
-                AgentReview.is_positive,
-            )
-        """
+        """SQL: WHERE AgentReview.rating >= 4"""
         return cls.rating >= 4
 
     @hybrid_property
@@ -357,7 +311,7 @@ class AgentReview(Base, UUIDMixin, CreatedAtMixin):
 
     @is_negative.expression
     def is_negative(cls):
-        """SQL: WHERE AgentReview.is_negative"""
+        """SQL: WHERE AgentReview.rating <= 2"""
         return cls.rating <= 2
 
     # ── Computed properties: display-only ─────────────────────────────────────
