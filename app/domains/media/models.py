@@ -59,6 +59,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -79,7 +80,7 @@ if TYPE_CHECKING:
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
 
-class MediaStatus(str, enum.Enum):
+class MediaStatus(enum.StrEnum):
     """
     Processing pipeline status for a media asset.
 
@@ -98,7 +99,7 @@ class MediaStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class ModerationStatus(str, enum.Enum):
+class ModerationStatus(enum.StrEnum):
     """
     Content moderation status. Independent of processing status.
 
@@ -120,13 +121,11 @@ class ModerationStatus(str, enum.Enum):
 _media_status_col = sa.Enum(
     MediaStatus,
     name="media_status",
-    values_callable=lambda obj: [e.value for e in obj],
 )
 
 _moderation_status_col = sa.Enum(
     ModerationStatus,
     name="moderation_status",
-    values_callable=lambda obj: [e.value for e in obj],
 )
 
 
@@ -228,7 +227,7 @@ class MediaAsset(Base, UUIDMixin, TimestampMixin):
     status: Mapped[MediaStatus] = mapped_column(
         _media_status_col,
         nullable=False,
-        server_default=text("'pending'"),
+        server_default=text("'pending'::media_status"),
         default=MediaStatus.PENDING,
         index=True,
         comment=(
@@ -242,7 +241,7 @@ class MediaAsset(Base, UUIDMixin, TimestampMixin):
     moderation_status: Mapped[ModerationStatus] = mapped_column(
         _moderation_status_col,
         nullable=False,
-        server_default=text("'pending'"),
+        server_default=text("'pending'::moderation_status"),
         default=ModerationStatus.PENDING,
         index=True,
         comment=(
@@ -367,9 +366,7 @@ class PropertyImage(Base, UUIDMixin, CreatedAtMixin):
 
     is_primary:
       Exactly one image per property should be is_primary=True.
-      This is the image shown in search results and property cards.
-      Enforced in service layer (not DB constraint — would need a partial
-      unique index which Alembic doesn't autogenerate).
+      Enforced via PostgreSQL partial unique index + service layer.
 
     Uses CreatedAtMixin (not TimestampMixin):
       Property images are never updated (only deleted and recreated).
@@ -419,7 +416,17 @@ class PropertyImage(Base, UUIDMixin, CreatedAtMixin):
         default=False,
         comment=(
             "The hero image for this property. Shown in search results and cards. "
-            "Exactly one per property (enforced in service layer)."
+            "Exactly one per property (enforced via partial index)."
+        ),
+    )
+
+    # ── Constraints & Indexes ────────────────────────────────────────────────
+    __table_args__ = (
+        Index(
+            "uq_property_primary_image",
+            "property_id",
+            unique=True,
+            postgresql_where=sa.text("is_primary IS TRUE"),
         ),
     )
 
@@ -494,9 +501,11 @@ class VirtualTour(Base, UUIDMixin, CreatedAtMixin):
         UUID(as_uuid=True),
         ForeignKey("properties.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
         comment=(
             "Which property this tour belongs to. "
-            "CASCADE: property deleted → tour links are meaningless."
+            "CASCADE: property deleted → tour links are meaningless. "
+            "Indexed for efficient property tour queries."
         ),
     )
     url: Mapped[str] = mapped_column(

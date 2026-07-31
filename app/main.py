@@ -1,11 +1,13 @@
 """
 FastAPI application entry point.
 
-Registers three exception handlers (ordered by specificity):
+Registers exception handlers (ordered by specificity):
 
   1. RequestValidationError (400) -- Pydantic schema validation failures
   2. BaseAppException         (400-429) -- domain/business logic errors
-  3. Exception                (500) -- safety net for programming errors
+  3. Starlette HTTPException  (400-405) -- standard HTTP errors (e.g. 405 Method Not Allowed)
+  4. 404 Handler              (404) -- missing endpoints
+  5. Exception                (500) -- safety net for programming errors
 
 Plus:
   - CORSMiddleware (BACKEND_CORS_ORIGINS from config)
@@ -26,6 +28,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.exceptions import BaseAppException
@@ -86,10 +89,6 @@ async def pydantic_validation_exception_handler(
 
     Normalizes Pydantic errors to match BaseAppException.to_dict() so
     the frontend has one error format to parse, always.
-
-    Field names are extracted from the Pydantic loc tuple, stripping
-    FastAPI's source prefixes (body, query, path, header) to give
-    clean field names regardless of where the parameter came from.
     """
     formatted_errors: dict[str, list[str]] = {}
     for error in exc.errors():
@@ -126,9 +125,7 @@ async def app_exception_handler(
     exc: BaseAppException,
 ):
     """
-    Catches every BaseAppException raised anywhere in the application --
-    domain services, repositories, middleware, dependencies -- and
-    converts it to the standard JSON error response.
+    Catches every BaseAppException raised in the application
 
     log_context carries structured data for monitoring (e.g.
     property_id, user_id) but NEVER sensitive data (passwords,
@@ -149,15 +146,28 @@ async def app_exception_handler(
     )
 
 
-# 3. FastAPI default 404 -- normalise to our error shape
+# 3. Standard HTTP framework exceptions (e.g. 405 Method Not Allowed)
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+):
+    """Normalizes default framework Starlette/FastAPI HTTP errors (e.g., 405)."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "message": exc.detail,
+            "errors": {},
+            "error_code": f"http_{exc.status_code}",
+        },
+    )
+
+
+# 4. FastAPI default 404 -- normalize to error shape
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
-    """
-    Catch FastAPI's built-in 404 responses and normalise them
-    into our standard error response shape. Without this handler,
-    a request to /nonexistent returns {"detail": "Not Found"} instead
-    of our standard {"success": false, ...}.
-    """
+    """Catch FastAPI 404 responses and normalize into standard error response shape."""
     return JSONResponse(
         status_code=404,
         content={
@@ -169,7 +179,7 @@ async def not_found_handler(request: Request, exc):
     )
 
 
-# 4. Unhandled exceptions (500) -- safety net
+# 5. Unhandled exceptions (500) -- safety net
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(
     request: Request,
