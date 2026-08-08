@@ -24,12 +24,13 @@ from app.domains.properties.schemas import (
     PropertyCreate,
     PropertyPublicRead,
     PropertyRead,
+    PropertyRejection,
     PropertySearch,
     PropertyUpdate,
 )
 from app.domains.properties.service import PropertyService
-from app.domains.users.models import User
-from app.permissions.guards import require_agent
+from app.domains.users.models import User, UserRole
+from app.permissions.guards import require_agent, require_role
 from app.shared.schemas import PaginatedResponse, SuccessResponse
 
 router = APIRouter(prefix="/properties", tags=["properties"])
@@ -210,6 +211,23 @@ async def update_property(
 
 
 @router.post(
+    "/{property_id}/revert-to-draft",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Revert an approved listing back to draft",
+)
+async def revert_to_draft(
+    property_id: uuid.UUID,
+    current_user: User = Depends(require_agent()),
+    db: AsyncSession = Depends(get_db),
+) -> SuccessResponse[PropertyRead]:
+    svc = PropertyService(db)
+    return SuccessResponse.ok(
+        data=await svc.revert_to_draft(property_id, current_user),
+        message="Listing reverted to draft",
+    )
+
+
+@router.post(
     "/{property_id}/submit",
     response_model=SuccessResponse[PropertyRead],
     summary="Submit listing for admin review",
@@ -224,6 +242,41 @@ async def submit(
     return SuccessResponse.ok(
         data=await svc.submit_for_review(property_id, current_user),
         message="Listing submitted for review",
+    )
+
+
+@router.post(
+    "/{property_id}/approve",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Approve a listing pending review",
+)
+async def approve(
+    property_id: uuid.UUID,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> SuccessResponse[PropertyRead]:
+    svc = PropertyService(db)
+    return SuccessResponse.ok(
+        data=await svc.approve(property_id, current_user),
+        message="Listing approved",
+    )
+
+
+@router.post(
+    "/{property_id}/reject",
+    response_model=SuccessResponse[PropertyRead],
+    summary="Reject a listing pending review",
+)
+async def reject(
+    property_id: uuid.UUID,
+    data: PropertyRejection,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> SuccessResponse[PropertyRead]:
+    svc = PropertyService(db)
+    return SuccessResponse.ok(
+        data=await svc.reject(property_id, current_user, data.rejection_reason),
+        message="Listing rejected",
     )
 
 

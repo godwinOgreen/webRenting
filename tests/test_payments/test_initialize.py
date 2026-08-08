@@ -19,7 +19,7 @@ from app.domains.payments.models import Payment, PaymentStatus
 from app.domains.subscriptions.models import Subscription
 from app.domains.users.models import User
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.future]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ async def test_initialize_payment_success(
     )
 
     response = await client.post(
-        "/payments/initialize",
+        "/api/v1/payments/initialize",
         json={"plan_type": "renter"},
         headers=auth_headers,
     )
@@ -116,7 +116,7 @@ async def test_initialize_payment_invalid_plan(
 ):
     """Invalid plan types are rejected by schema validation."""
     response = await client.post(
-        "/payments/initialize",
+        "/api/v1/payments/initialize",
         json={"plan_type": "super_vip_plan"},
         headers=auth_headers,
     )
@@ -137,7 +137,7 @@ async def test_list_mine_payments(
     payment = await _create_pending_payment(db, test_user)
 
     response = await client.get(
-        "/payments/mine?page=1&per_page=10",
+        "/api/v1/payments/mine?page=1&per_page=10",
         headers=auth_headers,
     )
 
@@ -158,7 +158,7 @@ async def test_get_payment_details_success(
     payment = await _create_pending_payment(db, test_user)
 
     response = await client.get(
-        f"/payments/{payment.id}",
+        f"/api/v1/payments/{payment.id}",
         headers=auth_headers,
     )
 
@@ -186,7 +186,7 @@ async def test_get_payment_other_user_forbidden(
     payment = await _create_pending_payment(db, other_user)
 
     response = await client.get(
-        f"/payments/{payment.id}",
+        f"/api/v1/payments/{payment.id}",
         headers=auth_headers,
     )
 
@@ -202,7 +202,7 @@ async def test_webhook_invalid_signature_fails(client: AsyncClient):
     headers = {"x-paystack-signature": "invalid_signature_hash"}
 
     response = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers=headers,
     )
@@ -215,7 +215,7 @@ async def test_webhook_missing_signature_fails(client: AsyncClient):
     raw_payload = b'{"event": "charge.success", "data": {}}'
 
     response = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers={"content-type": "application/json"},
     )
@@ -235,7 +235,7 @@ async def test_webhook_charge_success_activates_subscription(
     headers = _webhook_headers(raw_payload)
 
     response = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers=headers,
     )
@@ -269,7 +269,7 @@ async def test_webhook_replay_attack_is_idempotent(
 
     # First call — process normally
     res1 = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers=headers,
     )
@@ -277,7 +277,7 @@ async def test_webhook_replay_attack_is_idempotent(
 
     # Second call (replay) — should be a no-op
     res2 = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers=headers,
     )
@@ -305,7 +305,7 @@ async def test_webhook_amount_mismatch_fails_payment(
     headers = _webhook_headers(raw_payload)
 
     response = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers=headers,
     )
@@ -329,7 +329,7 @@ async def test_webhook_unknown_reference_ignored(client: AsyncClient):
     headers = _webhook_headers(raw_payload)
 
     response = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers=headers,
     )
@@ -358,7 +358,7 @@ async def test_webhook_non_charge_event_ignored(
     headers = _webhook_headers(raw_payload)
 
     response = await client.post(
-        "/payments/webhook",
+        "/api/v1/payments/webhook",
         content=raw_payload,
         headers=headers,
     )

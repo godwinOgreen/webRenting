@@ -275,6 +275,17 @@ class PropertyService:
         )
         return PropertyRead.model_validate(updated)
 
+    async def revert_to_draft(self, property_id: uuid.UUID, agent: User) -> PropertyRead:
+        """APPROVED → DRAFT. Agent-initiated."""
+        prop = await self._get_owned_or_raise(property_id, agent.id)
+        if prop.approval_status != ApprovalStatus.APPROVED:
+            raise ConflictException(
+                message="Only approved listings can be reverted to draft",
+                error_code="invalid_state_transition",
+            )
+        updated = await self.repo.update_status(prop, ApprovalStatus.DRAFT)
+        return PropertyRead.model_validate(updated)
+
     async def publish(
         self,
         property_id: uuid.UUID,
@@ -297,12 +308,17 @@ class PropertyService:
         updated = await self.repo.update_status(prop, ApprovalStatus.PUBLISHED)
         logger.info("Property published", extra={"property_id": str(property_id)})
 
-        from app.tasks.celery_app import celery_app
+        try:
+            from app.tasks.celery_app import celery_app
 
-        celery_app.send_task(
-            "app.tasks.saved_search_alerts.notify_matching_saved_searches",
-            args=[str(property_id)],
-        )
+            celery_app.send_task(
+                "app.tasks.saved_search_alerts.notify_matching_saved_searches",
+                args=[str(property_id)],
+            )
+        except Exception:
+            logger.debug(
+                "Celery task queue unavailable; continuing without background notification"
+            )
 
         return PropertyRead.model_validate(updated)
 

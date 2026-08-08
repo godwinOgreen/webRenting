@@ -26,7 +26,7 @@ PROPERTY_PAYLOAD = {
 
 async def _create_draft(client: AsyncClient, token: str) -> str:
     resp = await client.post(
-        "/properties",
+        "/api/v1/properties",
         json=PROPERTY_PAYLOAD,
         headers=auth(token),
     )
@@ -38,7 +38,7 @@ async def test_submit_for_review(client: AsyncClient, agent_token: str):
     prop_id = await _create_draft(client, agent_token)
 
     resp = await client.post(
-        f"/properties/{prop_id}/submit",
+        f"/api/v1/properties/{prop_id}/submit",
         headers=auth(agent_token),
     )
     assert resp.status_code == 200
@@ -49,23 +49,20 @@ async def test_submit_for_review(client: AsyncClient, agent_token: str):
 async def test_approve_and_publish(client: AsyncClient, agent_token: str, admin_token: str):
     prop_id = await _create_draft(client, agent_token)
 
-    # Submit
     await client.post(
-        f"/properties/{prop_id}/submit",
+        f"/api/v1/properties/{prop_id}/submit",
         headers=auth(agent_token),
     )
 
-    # Approve (admin)
     resp = await client.post(
-        f"/properties/{prop_id}/approve",
+        f"/api/v1/properties/{prop_id}/approve",
         headers=auth(admin_token),
     )
     assert resp.status_code == 200
     assert resp.json()["data"]["approval_status"] == "approved"
 
-    # Publish (agent)
     resp = await client.post(
-        f"/properties/{prop_id}/publish",
+        f"/api/v1/properties/{prop_id}/publish",
         headers=auth(agent_token),
     )
     assert resp.status_code == 200
@@ -78,12 +75,12 @@ async def test_approve_and_publish(client: AsyncClient, agent_token: str, admin_
 async def test_reject_with_reason(client: AsyncClient, agent_token: str, admin_token: str):
     prop_id = await _create_draft(client, agent_token)
     await client.post(
-        f"/properties/{prop_id}/submit",
+        f"/api/v1/properties/{prop_id}/submit",
         headers=auth(agent_token),
     )
 
     resp = await client.post(
-        f"/properties/{prop_id}/reject",
+        f"/api/v1/properties/{prop_id}/reject",
         json={"rejection_reason": "Missing property photos"},
         headers=auth(admin_token),
     )
@@ -97,36 +94,34 @@ async def test_reject_with_reason(client: AsyncClient, agent_token: str, admin_t
 async def test_resubmit_after_rejection(client: AsyncClient, agent_token: str, admin_token: str):
     prop_id = await _create_draft(client, agent_token)
 
-    # Submit → Reject
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
     await client.post(
-        f"/properties/{prop_id}/reject",
+        f"/api/v1/properties/{prop_id}/reject",
         json={"rejection_reason": "Bad photos"},
         headers=auth(admin_token),
     )
 
-    # Resubmit
     resp = await client.post(
-        f"/properties/{prop_id}/submit",
+        f"/api/v1/properties/{prop_id}/submit",
         headers=auth(agent_token),
     )
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["approval_status"] == "pending_review"
-    assert data["rejection_reason"] is None  # cleared on resubmit
+    assert data["rejection_reason"] is None
 
 
 @pytest.mark.asyncio
 async def test_revert_to_draft(client: AsyncClient, agent_token: str, admin_token: str):
     prop_id = await _create_draft(client, agent_token)
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
     await client.post(
-        f"/properties/{prop_id}/approve",
+        f"/api/v1/properties/{prop_id}/approve",
         headers=auth(admin_token),
     )
 
     resp = await client.post(
-        f"/properties/{prop_id}/revert-to-draft",
+        f"/api/v1/properties/{prop_id}/revert-to-draft",
         headers=auth(agent_token),
     )
     assert resp.status_code == 200

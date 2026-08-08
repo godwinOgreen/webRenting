@@ -26,23 +26,20 @@ PROPERTY_PAYLOAD = {
 
 async def _create_draft(client: AsyncClient, token: str) -> str:
     resp = await client.post(
-        "/properties",
+        "/api/v1/properties",
         json=PROPERTY_PAYLOAD,
         headers=auth(token),
     )
     return resp.json()["data"]["id"]
 
 
-# ── Invalid transitions ──────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_cannot_edit_submitted(client: AsyncClient, agent_token: str):
     prop_id = await _create_draft(client, agent_token)
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
 
     resp = await client.patch(
-        f"/properties/{prop_id}",
+        f"/api/v1/properties/{prop_id}",
         json={"title": "Updated Title Here"},
         headers=auth(agent_token),
     )
@@ -55,7 +52,7 @@ async def test_cannot_publish_draft(client: AsyncClient, agent_token: str):
     prop_id = await _create_draft(client, agent_token)
 
     resp = await client.post(
-        f"/properties/{prop_id}/publish",
+        f"/api/v1/properties/{prop_id}/publish",
         headers=auth(agent_token),
     )
     assert resp.status_code == 409
@@ -64,10 +61,10 @@ async def test_cannot_publish_draft(client: AsyncClient, agent_token: str):
 @pytest.mark.asyncio
 async def test_cannot_submit_already_pending(client: AsyncClient, agent_token: str):
     prop_id = await _create_draft(client, agent_token)
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
 
     resp = await client.post(
-        f"/properties/{prop_id}/submit",
+        f"/api/v1/properties/{prop_id}/submit",
         headers=auth(agent_token),
     )
     assert resp.status_code == 409
@@ -76,16 +73,13 @@ async def test_cannot_submit_already_pending(client: AsyncClient, agent_token: s
 @pytest.mark.asyncio
 async def test_agent_cannot_approve(client: AsyncClient, agent_token: str):
     prop_id = await _create_draft(client, agent_token)
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
 
     resp = await client.post(
-        f"/properties/{prop_id}/approve",
+        f"/api/v1/properties/{prop_id}/approve",
         headers=auth(agent_token),
     )
     assert resp.status_code == 403
-
-
-# ── Valid lifecycle ──────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -96,23 +90,20 @@ async def test_full_lifecycle_draft_to_published(
 ):
     prop_id = await _create_draft(client, agent_token)
 
-    # DRAFT → PENDING_REVIEW
     resp = await client.post(
-        f"/properties/{prop_id}/submit",
+        f"/api/v1/properties/{prop_id}/submit",
         headers=auth(agent_token),
     )
     assert resp.json()["data"]["approval_status"] == "pending_review"
 
-    # PENDING_REVIEW → APPROVED
     resp = await client.post(
-        f"/properties/{prop_id}/approve",
+        f"/api/v1/properties/{prop_id}/approve",
         headers=auth(admin_token),
     )
     assert resp.json()["data"]["approval_status"] == "approved"
 
-    # APPROVED → PUBLISHED
     resp = await client.post(
-        f"/properties/{prop_id}/publish",
+        f"/api/v1/properties/{prop_id}/publish",
         headers=auth(agent_token),
     )
     data = resp.json()["data"]
@@ -128,27 +119,24 @@ async def test_full_lifecycle_with_rejection_and_resubmit(
 ):
     prop_id = await _create_draft(client, agent_token)
 
-    # Submit → Reject
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
     await client.post(
-        f"/properties/{prop_id}/reject",
+        f"/api/v1/properties/{prop_id}/reject",
         json={"rejection_reason": "Needs better photos"},
         headers=auth(admin_token),
     )
 
-    # Verify rejection
     resp = await client.get(
-        f"/properties/mine/{prop_id}",
+        f"/api/v1/properties/mine/{prop_id}",
         headers=auth(agent_token),
     )
     assert resp.json()["data"]["approval_status"] == "rejected"
     assert resp.json()["data"]["rejection_reason"] == "Needs better photos"
 
-    # Resubmit → Approve → Publish
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
-    await client.post(f"/properties/{prop_id}/approve", headers=auth(admin_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/approve", headers=auth(admin_token))
     resp = await client.post(
-        f"/properties/{prop_id}/publish",
+        f"/api/v1/properties/{prop_id}/publish",
         headers=auth(agent_token),
     )
     assert resp.json()["data"]["approval_status"] == "published"
@@ -162,21 +150,18 @@ async def test_archive_and_republish(
 ):
     prop_id = await _create_draft(client, agent_token)
 
-    # Get to published
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
-    await client.post(f"/properties/{prop_id}/approve", headers=auth(admin_token))
-    await client.post(f"/properties/{prop_id}/publish", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/approve", headers=auth(admin_token))
+    await client.post(f"/api/v1/properties/{prop_id}/publish", headers=auth(agent_token))
 
-    # PUBLISHED → ARCHIVED
     resp = await client.post(
-        f"/properties/{prop_id}/archive",
+        f"/api/v1/properties/{prop_id}/archive",
         headers=auth(agent_token),
     )
     assert resp.json()["data"]["approval_status"] == "archived"
 
-    # ARCHIVED → PENDING_REVIEW (republish)
     resp = await client.post(
-        f"/properties/{prop_id}/submit",
+        f"/api/v1/properties/{prop_id}/submit",
         headers=auth(agent_token),
     )
     assert resp.json()["data"]["approval_status"] == "pending_review"

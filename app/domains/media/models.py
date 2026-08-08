@@ -121,11 +121,13 @@ class ModerationStatus(enum.StrEnum):
 _media_status_col = sa.Enum(
     MediaStatus,
     name="media_status",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
 )
 
 _moderation_status_col = sa.Enum(
     ModerationStatus,
     name="moderation_status",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
 )
 
 

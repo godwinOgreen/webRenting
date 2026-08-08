@@ -28,6 +28,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
@@ -118,7 +119,42 @@ async def pydantic_validation_exception_handler(
     )
 
 
-# 2. Application exceptions (400-429)
+# 2. Pydantic model validation errors (400)
+@app.exception_handler(PydanticValidationError)
+async def pydantic_model_validation_exception_handler(
+    request: Request,
+    exc: PydanticValidationError,
+):
+    """Normalize Pydantic validation failures raised outside FastAPI's request parsing."""
+    formatted_errors: dict[str, list[str]] = {}
+    for error in exc.errors(include_url=False):
+        field_path = (
+            ".".join(
+                str(loc) for loc in error["loc"] if loc not in ("body", "query", "path", "header")
+            )
+            or "payload"
+        )
+        formatted_errors.setdefault(field_path, []).append(error["msg"])
+
+    logger.debug(
+        "Schema validation failed on %s %s: %d errors",
+        request.method,
+        request.url.path,
+        len(formatted_errors),
+    )
+
+    return JSONResponse(
+        status_code=400,
+        content={
+            "success": False,
+            "message": "Schema validation failed for incoming payload parameters.",
+            "errors": formatted_errors,
+            "error_code": "schema_validation_error",
+        },
+    )
+
+
+# 3. Application exceptions (400-429)
 @app.exception_handler(BaseAppException)
 async def app_exception_handler(
     request: Request,
@@ -146,7 +182,7 @@ async def app_exception_handler(
     )
 
 
-# 3. Standard HTTP framework exceptions (e.g. 405 Method Not Allowed)
+# 4. Standard HTTP framework exceptions (e.g. 405 Method Not Allowed)
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(
     request: Request,
@@ -164,7 +200,7 @@ async def http_exception_handler(
     )
 
 
-# 4. FastAPI default 404 -- normalize to error shape
+# 5. FastAPI default 404 -- normalize to error shape
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
     """Catch FastAPI 404 responses and normalize into standard error response shape."""
@@ -179,7 +215,7 @@ async def not_found_handler(request: Request, exc):
     )
 
 
-# 5. Unhandled exceptions (500) -- safety net
+# 6. Unhandled exceptions (500) -- safety net
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(
     request: Request,

@@ -12,7 +12,6 @@ SQLAlchemy's func interface — no geoalchemy2 required.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from sqlalchemy import delete, func, select
@@ -169,9 +168,8 @@ class PropertyRepository:
             .limit(f.per_page)
         )
 
-        count_res, data_res = await asyncio.gather(
-            self.db.execute(count_q), self.db.execute(data_q)
-        )
+        count_res = await self.db.execute(count_q)
+        data_res = await self.db.execute(data_q)
         return list(data_res.scalars().all()), count_res.scalar_one()
 
     async def list_features(self) -> list[PropertyFeature]:

@@ -27,29 +27,28 @@ PROPERTY_PAYLOAD = {
 async def _create_and_publish(client: AsyncClient, agent_token: str, admin_token: str) -> str:
     """Helper: create → submit → approve → publish. Returns property ID."""
     resp = await client.post(
-        "/properties",
+        "/api/v1/properties",
         json=PROPERTY_PAYLOAD,
         headers=auth(agent_token),
     )
     prop_id = resp.json()["data"]["id"]
 
-    await client.post(f"/properties/{prop_id}/submit", headers=auth(agent_token))
-    await client.post(f"/properties/{prop_id}/approve", headers=auth(admin_token))
-    await client.post(f"/properties/{prop_id}/publish", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/submit", headers=auth(agent_token))
+    await client.post(f"/api/v1/properties/{prop_id}/approve", headers=auth(admin_token))
+    await client.post(f"/api/v1/properties/{prop_id}/publish", headers=auth(agent_token))
 
     return prop_id
 
 
 @pytest.mark.asyncio
 async def test_search_excludes_drafts(client: AsyncClient, agent_token: str):
-    """Draft properties should not appear in public search."""
     await client.post(
-        "/properties",
+        "/api/v1/properties",
         json=PROPERTY_PAYLOAD,
         headers=auth(agent_token),
     )
 
-    resp = await client.get("/properties")
+    resp = await client.get("/api/v1/properties")
     assert resp.status_code == 200
     assert resp.json()["total"] == 0
 
@@ -60,10 +59,9 @@ async def test_search_includes_published(
     agent_token: str,
     admin_token: str,
 ):
-    """Published properties should appear in public search."""
     await _create_and_publish(client, agent_token, admin_token)
 
-    resp = await client.get("/properties")
+    resp = await client.get("/api/v1/properties")
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
     assert resp.json()["items"][0]["title"] == "3 Bedroom Flat in Lekki"
@@ -77,12 +75,10 @@ async def test_search_filter_by_city(
 ):
     await _create_and_publish(client, agent_token, admin_token)
 
-    # Matching city
-    resp = await client.get("/properties?city=Lagos")
+    resp = await client.get("/api/v1/properties?city=Lagos")
     assert resp.json()["total"] == 1
 
-    # Non-matching city
-    resp = await client.get("/properties?city=Abuja")
+    resp = await client.get("/api/v1/properties?city=Abuja")
     assert resp.json()["total"] == 0
 
 
@@ -94,10 +90,10 @@ async def test_search_filter_by_price_range(
 ):
     await _create_and_publish(client, agent_token, admin_token)
 
-    resp = await client.get("/properties?min_price=3000000&max_price=4000000")
+    resp = await client.get("/api/v1/properties?min_price=3000000&max_price=4000000")
     assert resp.json()["total"] == 1
 
-    resp = await client.get("/properties?min_price=10000000")
+    resp = await client.get("/api/v1/properties?min_price=10000000")
     assert resp.json()["total"] == 0
 
 
@@ -109,16 +105,16 @@ async def test_search_filter_by_property_type(
 ):
     await _create_and_publish(client, agent_token, admin_token)
 
-    resp = await client.get("/properties?property_type=apartment")
+    resp = await client.get("/api/v1/properties?property_type=apartment")
     assert resp.json()["total"] == 1
 
-    resp = await client.get("/properties?property_type=duplex")
+    resp = await client.get("/api/v1/properties?property_type=duplex")
     assert resp.json()["total"] == 0
 
 
 @pytest.mark.asyncio
 async def test_search_invalid_property_type(client: AsyncClient):
-    resp = await client.get("/properties?property_type=mansion")
+    resp = await client.get("/api/v1/properties?property_type=mansion")
     assert resp.status_code == 400
 
 
@@ -128,27 +124,24 @@ async def test_search_pagination(
     agent_token: str,
     admin_token: str,
 ):
-    # Create 3 published properties
     for i in range(3):
         payload = {**PROPERTY_PAYLOAD, "title": f"Property Listing Number {i}"}
         resp = await client.post(
-            "/properties",
+            "/api/v1/properties",
             json=payload,
             headers=auth(agent_token),
         )
         pid = resp.json()["data"]["id"]
-        await client.post(f"/properties/{pid}/submit", headers=auth(agent_token))
-        await client.post(f"/properties/{pid}/approve", headers=auth(admin_token))
-        await client.post(f"/properties/{pid}/publish", headers=auth(agent_token))
+        await client.post(f"/api/v1/properties/{pid}/submit", headers=auth(agent_token))
+        await client.post(f"/api/v1/properties/{pid}/approve", headers=auth(admin_token))
+        await client.post(f"/api/v1/properties/{pid}/publish", headers=auth(agent_token))
 
-    # Page 1
-    resp = await client.get("/properties?per_page=2&page=1")
+    resp = await client.get("/api/v1/properties?per_page=2&page=1")
     assert resp.status_code == 200
     assert len(resp.json()["items"]) == 2
     assert resp.json()["total"] == 3
 
-    # Page 2
-    resp = await client.get("/properties?per_page=2&page=2")
+    resp = await client.get("/api/v1/properties?per_page=2&page=2")
     assert len(resp.json()["items"]) == 1
 
 
@@ -160,16 +153,14 @@ async def test_search_returns_card_format(
 ):
     await _create_and_publish(client, agent_token, admin_token)
 
-    resp = await client.get("/properties")
+    resp = await client.get("/api/v1/properties")
     card = resp.json()["items"][0]
 
-    # Card should have lightweight fields
     assert "id" in card
     assert "title" in card
     assert "price" in card
     assert "primary_image_url" in card
 
-    # Card should NOT have full fields
     assert "description" not in card
     assert "latitude" not in card
     assert "longitude" not in card

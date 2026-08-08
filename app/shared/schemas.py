@@ -185,6 +185,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
     success: bool = True
     message: str = "Success"
+    items: list[T]
+    total: int
     data: list[T]
     meta: PaginationMeta
 
@@ -204,9 +206,12 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
         total_pages uses ceiling division. If total=0, total_pages=0.
         """
+        item_list = list(items)
         total_pages = math.ceil(total / per_page) if total > 0 else 0
         return cls(
-            data=items,
+            items=item_list,
+            total=total,
+            data=item_list,
             message=message,
             meta=PaginationMeta(
                 page=page,

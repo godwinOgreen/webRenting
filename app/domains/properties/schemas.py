@@ -156,6 +156,14 @@ class PropertyUpdate(BaseModel):
         return v
 
 
+class PropertyRejection(BaseModel):
+    """Request payload for admin property rejection."""
+
+    rejection_reason: str = Field(..., min_length=1, max_length=1000)
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
 # ── Full read (owner / admin) ─────────────────────────────────────────────────
 
 
