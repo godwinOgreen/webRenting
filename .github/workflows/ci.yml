@@ -89,7 +89,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5433/webrenting_test
           SECRET_KEY: ${{ secrets.TEST_SECRET_KEY }}
-          TEST_REDIS_URL: redis://localhost:6379/0
+          REDIS_URL: redis://localhost:6379/0
         run: uv run pytest -v
 
   docker:
