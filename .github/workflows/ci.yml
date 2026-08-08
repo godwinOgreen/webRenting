@@ -89,7 +89,7 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/webrenting_test
           TEST_REDIS_URL: redis://localhost:6379/0
-        run: uv run pytest -v -m
+        run: uv run pytest -v
 
   docker:
     name: 🐳 Docker Build
@@ -153,9 +153,11 @@ jobs:
       - name: Run Alembic Migrations
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/webrenting_test
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: uv run alembic upgrade head
 
       - name: Verify Migration Head
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/webrenting_test
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: uv run alembic current
