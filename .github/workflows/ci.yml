@@ -87,10 +87,10 @@ jobs:
 
       - name: Run Test Suite
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/webrenting_test
-          TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/webrenting_test
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5433/webrenting_test
+#          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5433/webrenting_test
           REDIS_URL: redis://localhost:6379/0
-          TEST_REDIS_URL: redis://localhost:6379/0
+#          TEST_REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: ${{ secrets.TEST_SECRET_KEY }}
         run: uv run pytest -v
 
