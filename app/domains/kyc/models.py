@@ -32,18 +32,14 @@ Admin override (Rule 8):
   effective_status property encodes this precedence:
       latest KycAdminReview.decision  >  KycDocument.status
 
-KycDocumentStatus reuses the SAME PostgreSQL enum type as User.kyc_status
-(name="kyc_status"), but the document's status only ever takes
+KycDocumentStatus uses its own PostgreSQL enum type (name="kyc_document_status")
+to avoid conflicting with User.kyc_status. The document's status only ever takes
 pending/approved/rejected — never not_submitted.
-We give it its own Python enum (KycDocumentStatus, 3 values) for clarity
-while pointing at the same underlying DB type.
 
 Why KycDocumentType and KycReviewDecision are PostgreSQL enums (not strings):
   Document types map to government-issued IDs — they rarely change.
   Admin override decisions are safety-critical — typos would be catastrophic.
   Both benefit from type safety and database-level constraints.
-  This differs from subscription_type or related_type (stored as strings)
-  because those are more likely to change and less safety-critical.
 
 NDPR compliance:
   KycDocument.user_id uses ON DELETE CASCADE.
@@ -84,7 +80,7 @@ if TYPE_CHECKING:
 # ─── Enums ───────────────────────────────────────────────────────────────────
 
 
-class KycDocumentType(str, enum.Enum):
+class KycDocumentType(enum.StrEnum):
     """
     Type of identity document submitted.
     Applies to all roles, including agents.
@@ -96,7 +92,7 @@ class KycDocumentType(str, enum.Enum):
     DRIVERS_LICENSE = "drivers_license"
 
 
-class KycDocumentStatus(str, enum.Enum):
+class KycDocumentStatus(enum.StrEnum):
     """
     Status of THIS document submission, as determined by the third-party
     provider. NOT the user's overall kyc_status — see User.kyc_status
@@ -106,8 +102,8 @@ class KycDocumentStatus(str, enum.Enum):
     APPROVED → provider verified the document
     REJECTED → provider rejected the document (rejection_reason set)
 
-    Shares the same PostgreSQL enum type name ("kyc_status") as User.kyc_status,
-    but this Python enum has only 3 values (documents are always submitted).
+    Has its own PostgreSQL enum type ("kyc_document_status") to avoid
+    conflicting with User.kyc_status. Never uses "not_submitted".
     """
 
     PENDING = "pending"
@@ -115,7 +111,7 @@ class KycDocumentStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
-class KycReviewDecision(str, enum.Enum):
+class KycReviewDecision(enum.StrEnum):
     """
     Admin's override decision on a KycDocument. Always final (Rule 8).
     Stored as PostgreSQL enum for type safety (safety-critical decision).
@@ -130,27 +126,17 @@ class KycReviewDecision(str, enum.Enum):
 _kyc_document_type_col = sa.Enum(
     KycDocumentType,
     name="kyc_document_type",
-    values_callable=lambda obj: [e.value for e in obj],
 )
 
-# NOTE: Reuses the SAME PostgreSQL enum type as User.kyc_status (name="kyc_status").
-# Different Python enum (KycDocumentStatus, 3 values) for domain clarity.
-# KycDocumentStatus never uses "not_submitted" — documents are always submitted.
-# THE 3 ABOUT LINE IS WRONG
-# BEFORE (BUG — overwrites User's kyc_status in Python dict):
-#   name="kyc_status"
-#
-# AFTER (FIX — own PostgreSQL type, no conflict):
+# Own PostgreSQL enum type — does not conflict with User.kyc_status.
 _kyc_document_status_col = sa.Enum(
     KycDocumentStatus,
     name="kyc_document_status",
-    values_callable=lambda obj: [e.value for e in obj],
 )
 
 _kyc_review_decision_col = sa.Enum(
     KycReviewDecision,
     name="kyc_review_decision",
-    values_callable=lambda obj: [e.value for e in obj],
 )
 
 
@@ -211,7 +197,7 @@ class KycDocument(Base, UUIDMixin, TimestampMixin):
     status: Mapped[KycDocumentStatus] = mapped_column(
         _kyc_document_status_col,
         nullable=False,
-        server_default=text("'pending'"),
+        server_default=text("'pending'::kyc_document_status"),
         default=KycDocumentStatus.PENDING,
         index=True,
         comment=(
@@ -467,7 +453,7 @@ class KycAdminReview(Base, UUIDMixin, CreatedAtMixin):
     admin: Mapped[User] = relationship(
         "User",
         foreign_keys=[admin_id],
-        uselist=False,
+        back_populates="admin_reviews_conducted",
     )
 
     # ── Computed properties: hybrid (usable in queries) ───────────────────────
