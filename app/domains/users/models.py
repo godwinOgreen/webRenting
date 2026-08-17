@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from app.domains.analytics.models import PropertyAnalytics
     from app.domains.bookings.models import AgentAvailability, Booking
     from app.domains.consent.models import UserConsentLog
-    from app.domains.kyc.models import KycDocument
+    from app.domains.kyc.models import KycAdminReview, KycDocument
     from app.domains.media.models import MediaAsset
     from app.domains.messaging.models import ConversationParticipant, Message
     from app.domains.notifications.models import Notification, UserNotificationSettings
@@ -346,6 +346,11 @@ class User(Base, UUIDMixin, TimestampMixin):
     kyc_documents: Mapped[list[KycDocument]] = relationship(
         "KycDocument",
         back_populates="user",
+    )
+    admin_reviews_conducted: Mapped[list[KycAdminReview]] = relationship(
+        "KycAdminReview",
+        back_populates="admin",
+        foreign_keys="KycAdminReview.admin_id",
     )
 
     # Search
