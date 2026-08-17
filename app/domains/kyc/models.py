@@ -41,6 +41,12 @@ Why KycDocumentType and KycReviewDecision are PostgreSQL enums (not strings):
   Admin override decisions are safety-critical — typos would be catastrophic.
   Both benefit from type safety and database-level constraints.
 
+Why values_callable is required on all enum columns:
+  sa.Enum(StrEnum) persists member NAMES (PENDING, APPROVED) by default,
+  not .value strings (pending, approved). values_callable forces
+  PostgreSQL to store the lowercase .value strings, which must match
+  server_default=text("'pending'::kyc_document_status").
+
 NDPR compliance:
   KycDocument.user_id uses ON DELETE CASCADE.
   If a user exercises their right to erasure, ALL their identity data
@@ -126,17 +132,20 @@ class KycReviewDecision(enum.StrEnum):
 _kyc_document_type_col = sa.Enum(
     KycDocumentType,
     name="kyc_document_type",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
 )
 
 # Own PostgreSQL enum type — does not conflict with User.kyc_status.
 _kyc_document_status_col = sa.Enum(
     KycDocumentStatus,
     name="kyc_document_status",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
 )
 
 _kyc_review_decision_col = sa.Enum(
     KycReviewDecision,
     name="kyc_review_decision",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
 )
 
 
